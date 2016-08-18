@@ -8,7 +8,6 @@ LABEL org.label-schema.docker.dockerfile="./3.2/Dockerfile" \
         org.label-schema.vcs-url="https://github.com/inspired-geek/redmine-alpine" \
         org.label-schema.version="3.2"
 
-
 ENV BRANCH_NAME=3.2-stable \
         RAILS_ENV=production
 

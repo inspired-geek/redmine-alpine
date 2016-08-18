@@ -16,7 +16,7 @@ WORKDIR /usr/src/redmine
 RUN addgroup -S redmine \
         && adduser -S -G redmine redmine \
 	&& apk --no-cache add --virtual .run-deps \
-                mariadb-client-libs \
+                mariadb-libs \
                 imagemagick \
                 git \
                 mercurial \
