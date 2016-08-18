@@ -11,8 +11,6 @@ before_script:
   - env | sort
   - cd "$VERSION"
   - image="$(awk '$1 == "FROM" { print $2; exit }' unicorn/Dockerfile)"
-  - docker build -t inspiredgeek/redmine-alpine ./3.3
-  - 
 
 script:
   - docker build -t "$image" .
