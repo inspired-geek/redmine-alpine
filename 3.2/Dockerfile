@@ -55,6 +55,7 @@ RUN addgroup -S redmine \
 	done \
         && bundle install --without development test \
 	&& rm ./config/database.yml \
+	&& rm -rf /root/* `gem env gemdir`/cache \
         && apk --purge del .build-deps
 
 VOLUME /usr/src/redmine/files
