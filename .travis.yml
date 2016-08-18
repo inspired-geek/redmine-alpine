@@ -1,11 +1,24 @@
-sudo: required
+language: bash
 
-services:
-  - docker
+services: docker
 
-before_install:
+env:
+  - VERSION=3.3
+  - VERSION=3.2
+  - VERSION=3.1
+
+before_script:
+  - env | sort
+  - cd "$VERSION"
+  - image="$(awk '$1 == "FROM" { print $2; exit }' unicorn/Dockerfile)"
   - docker build -t inspiredgeek/redmine-alpine ./3.3
+  - 
 
 script:
-  - docker run -d -p 3000:3000 inspiredgeek/redmine-alpine 
+  - docker build -t "$image" .
+  - docker run -d -p 3000:3000 "$image"
+  - docker build -t "$image-unicorn" .
+  - docker run -d -p 8080:8080 "$image" 
 
+after_script:
+  - docker images
