@@ -45,7 +45,7 @@ RUN addgroup -S redmine \
         && echo 'gem: --no-document' > /etc/gemrc \
         && gem update --system \
 	&& git clone -b ${BRANCH_NAME} https://github.com/redmine/redmine.git . \
-        && rm files/delete.me log/delete.me .git test\
+        && rm -rf files/delete.me log/delete.me .git test\
         && mkdir -p tmp/pdf public/plugin_assets \
         && chown -R redmine:redmine ./\
 	&& for adapter in mysql2 postgresql sqlite3; do \
