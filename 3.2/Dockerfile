@@ -1,6 +1,14 @@
 FROM alpine:3.3
 MAINTAINER Alexey Ivanov <lexa.ivanov@gmail.com>
 
+LABEL org.label-schema.docker.dockerfile="./3.2/Dockerfile" \
+        org.label-schema.license="MIT" \
+        org.label-schema.name="redmine-alpine" \
+        org.label-schema.vcs-type="Git" \
+        org.label-schema.vcs-url="https://github.com/inspired-geek/redmine-alpine" \
+        org.label-schema.version="3.2"
+
+
 ENV BRANCH_NAME=3.2-stable \
         RAILS_ENV=production
 
@@ -37,7 +45,7 @@ RUN addgroup -S redmine \
         && echo 'gem: --no-document' > /etc/gemrc \
         && gem update --system \
 	&& git clone -b ${BRANCH_NAME} https://github.com/redmine/redmine.git . \
-        && rm files/delete.me log/delete.me \
+        && rm files/delete.me log/delete.me .git test\
         && mkdir -p tmp/pdf public/plugin_assets \
         && chown -R redmine:redmine ./\
 	&& for adapter in mysql2 postgresql sqlite3; do \
