@@ -22,4 +22,5 @@ script:
   - docker run -d -p 8080:8080 "$image" 
 
 after_script:
+  - docker ps -a
   - docker images
