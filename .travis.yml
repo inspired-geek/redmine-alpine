@@ -17,10 +17,12 @@ before_script:
 
 script:
   - docker build -t "$image" .
-  - docker run -d -p 3000:3000 -e REDMINE_DB_MYSQL=$MYSQL_HOST "$image"
+  - docker run -d -p 3000:3000 -e REDMINE_DB_MYSQL=$MYSQL_HOST --name redmine "$image"
   - docker build -t "$image-unicorn" .
-  - docker run -d -p 8080:8080 "$image" 
+  - docker run -d -p 8080:8080 --name redmine-unicorn "$image-unicorn" 
 
 after_script:
+  - docker logs redmine
+  - docker logs redmine-unicorn
   - docker ps -a
   - docker images
