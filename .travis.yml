@@ -22,6 +22,7 @@ script:
   - docker run -d -p 8080:8080 --name redmine-unicorn "$image-unicorn" 
 
 after_script:
+  - sleep 20
   - docker logs redmine
   - docker logs redmine-unicorn
   - docker ps -a

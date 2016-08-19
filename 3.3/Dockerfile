@@ -18,8 +18,6 @@ RUN addgroup -S redmine \
 	&& apk --no-cache add --virtual .run-deps \
                 mariadb-client-libs \
                 imagemagick \
-                git \
-                mercurial \
                 tzdata \
                 ruby \
 		ruby-bigdecimal \
@@ -38,6 +36,7 @@ RUN addgroup -S redmine \
                 patch \
                 coreutils \
                 curl \
+                git \
         && echo 'gem: --no-document' > /etc/gemrc \
         && gem update --system \
 	&& git clone -b ${BRANCH_NAME} https://github.com/redmine/redmine.git . \

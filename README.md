@@ -1,10 +1,13 @@
-Redmine container based on Alpine linux
+Extra small Redmine container based on Alpine linux
 =======================================
 
-[![Build Status](https://travis-ci.org/inspired-geek/redmine-alpine.svg?branch=master)](https://travis-ci.org/inspired-geek/redmine-alpine)
-[![](https://images.microbadger.com/badges/image/inspiredgeek/redmine-alpine.svg)](http://microbadger.com/images/inspiredgeek/redmine-alpine "Get your own image badge on microbadger.com")
+[![Build Status](https://travis-ci.org/inspired-geek/redmine-alpine.svg?branch=master)](https://travis-ci.org/inspired-geek/redmine-alpine) [![](https://images.microbadger.com/badges/image/inspiredgeek/redmine-alpine.svg)](http://microbadger.com/images/inspiredgeek/redmine-alpine "Get your own image badge on microbadger.com")
 
 It's been inspired by official [Redmine](https://hub.docker.com/_/redmine/) image but optimized in size.
+Image has mysql and sqlite3 support built in.
+Also there is image with fast web server Unicorn for production usage.
+
+If you need another database or web server or even some scm support feel free to inherit these images from [Docker hub](https://hub.docker.com/r/inspiredgeek/redmine-alpine/).
 
 ### Usage
 
