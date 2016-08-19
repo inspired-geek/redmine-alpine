@@ -2,7 +2,7 @@
 set -e
 
 case "$1" in
-	unicorn|rails|rake|passenger)
+	unicorn|rails|rake)
 		if [ ! -f './config/database.yml' ]; then
 			if [ "$MYSQL_PORT_3306_TCP" ]; then
 				: "${REDMINE_DB_MYSQL:=mysql}"
@@ -18,17 +18,9 @@ case "$1" in
 				: "${REDMINE_DB_PASSWORD:=${MYSQL_ENV_MYSQL_PASSWORD:-${MYSQL_ENV_MYSQL_ROOT_PASSWORD:-}}}"
 				: "${REDMINE_DB_DATABASE:=${MYSQL_ENV_MYSQL_DATABASE:-${MYSQL_ENV_MYSQL_USER:-redmine}}}"
 				: "${REDMINE_DB_ENCODING:=}"
-			elif [ "$REDMINE_DB_POSTGRES" ]; then
-				adapter='postgresql'
-				host="$REDMINE_DB_POSTGRES"
-				: "${REDMINE_DB_PORT:=5432}"
-				: "${REDMINE_DB_USERNAME:=${POSTGRES_ENV_POSTGRES_USER:-postgres}}"
-				: "${REDMINE_DB_PASSWORD:=${POSTGRES_ENV_POSTGRES_PASSWORD}}"
-				: "${REDMINE_DB_DATABASE:=${POSTGRES_ENV_POSTGRES_DB:-${REDMINE_DB_USERNAME:-}}}"
-				: "${REDMINE_DB_ENCODING:=utf8}"
 			else
 				echo >&2
-				echo >&2 'warning: missing REDMINE_DB_MYSQL or REDMINE_DB_POSTGRES environment variables'
+				echo >&2 'warning: missing REDMINE_DB_MYSQL  environment variables'
 				echo >&2
 				echo >&2 '*** Using sqlite3 as fallback. ***'
 				echo >&2
@@ -86,7 +78,7 @@ case "$1" in
 		# remove PID file to enable restarting the container
 		rm -f /usr/src/redmine/tmp/pids/server.pid
 		
-		if [ "$1" = 'unicorn' ] || [ "$1" = 'passenger' ]; then
+		if [ "$1" = 'unicorn' ]; then
 			# Don't fear the reaper.
 			set -- /sbin/tini -- "$@"
 		fi

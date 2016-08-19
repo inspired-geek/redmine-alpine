@@ -15,8 +15,11 @@ WORKDIR /usr/src/redmine
 
 RUN addgroup -S redmine \
         && adduser -S -G redmine redmine \
-	&& apk --no-cache add --repository http://dl-cdn.alpinelinux.org/alpine/edge/community/ --virtual .run-deps \
-                mariadb-libs \
+	&& apk --no-cache add \
+	--repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
+	--repository http://dl-cdn.alpinelinux.org/alpine/edge/community/ \
+	--virtual .run-deps \
+                mariadb-client-libs \
                 imagemagick \
                 git \
                 mercurial \
@@ -24,19 +27,19 @@ RUN addgroup -S redmine \
                 'ruby<2.4' \
 		ruby-bigdecimal \
 		ruby-bundler \
-		ruby-rake \
-		ruby-io-console \
                 tini \
                 su-exec \
 		bash \
-        && apk --no-cache add --virtual .build-deps \
+        && apk --no-cache add \
+        --repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
+        --repository http://dl-cdn.alpinelinux.org/alpine/edge/community/ \
+	--virtual .build-deps \
                 build-base \
                 ruby-dev \
                 libxslt-dev \
                 imagemagick-dev \
                 sqlite-dev \
 		mariadb-dev \
-		postgresql-dev \ 
                 linux-headers \
                 patch \
                 coreutils \
@@ -47,12 +50,11 @@ RUN addgroup -S redmine \
         && rm -rf files/delete.me log/delete.me .git test\
         && mkdir -p tmp/pdf public/plugin_assets \
         && chown -R redmine:redmine ./\
-	&& for adapter in mysql2 postgresql sqlite3; do \
+	&& for adapter in mysql2 sqlite3; do \
 		echo "$RAILS_ENV:" > ./config/database.yml; \
 		echo "  adapter: $adapter" >> ./config/database.yml; \
 		bundle install --without development test; \
 	done \
-        && bundle install --without development test \
 	&& rm ./config/database.yml \
 	&& rm -rf /root/* `gem env gemdir`/cache \
         && apk --purge del .build-deps
