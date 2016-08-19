@@ -29,6 +29,7 @@ RUN addgroup -S redmine \
 		ruby-bundler \
                 tini \
                 su-exec \
+                bash \
         && apk --no-cache add \
         --repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
         --repository http://dl-cdn.alpinelinux.org/alpine/edge/community/ \
