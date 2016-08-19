@@ -26,6 +26,7 @@ RUN addgroup -S redmine \
 		ruby-bundler \
                 tini \
                 su-exec \
+                bash \
         && apk --no-cache add --virtual .build-deps \
                 build-base \
                 ruby-dev \
