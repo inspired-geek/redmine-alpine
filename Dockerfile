@@ -1,43 +1,37 @@
-FROM alpine:3.3
+FROM alpine:latest
 MAINTAINER Alexey Ivanov <lexa.ivanov@gmail.com>
 
-LABEL org.label-schema.docker.dockerfile="./3.2/Dockerfile" \
-        org.label-schema.license="MIT" \
-        org.label-schema.name="redmine-alpine" \
-        org.label-schema.vcs-type="Git" \
-        org.label-schema.vcs-url="https://github.com/inspired-geek/redmine-alpine" \
-        org.label-schema.version="3.2"
+LABEL org.label-schema.docker.dockerfile="./3.3/Dockerfile" \
+	org.label-schema.license="MIT" \
+	org.label-schema.name="redmine-alpine" \
+	org.label-schema.vcs-type="Git" \
+	org.label-schema.vcs-url="https://github.com/inspired-geek/redmine-alpine" \
+        org.label-schema.version="3.3"
 
-ENV BRANCH_NAME=3.2-stable \
+ENV BRANCH_NAME=master \
         RAILS_ENV=production
 
 WORKDIR /usr/src/redmine
 
 RUN addgroup -S redmine \
         && adduser -S -G redmine redmine \
-	&& apk --no-cache add \
-	--repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
-	--repository http://dl-cdn.alpinelinux.org/alpine/edge/community/ \
-	--virtual .run-deps \
+	&& apk --no-cache add --virtual .run-deps \
                 mariadb-client-libs \
                 imagemagick \
                 tzdata \
-                'ruby<2.4' \
+                ruby \
 		ruby-bigdecimal \
 		ruby-bundler \
                 tini \
                 su-exec \
                 bash \
-        && apk --no-cache add \
-        --repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
-        --repository http://dl-cdn.alpinelinux.org/alpine/edge/community/ \
-	--virtual .build-deps \
+        && apk --no-cache add --virtual .build-deps \
                 build-base \
                 ruby-dev \
                 libxslt-dev \
                 imagemagick-dev \
+                mariadb-dev \
                 sqlite-dev \
-		mariadb-dev \
                 linux-headers \
                 patch \
                 coreutils \

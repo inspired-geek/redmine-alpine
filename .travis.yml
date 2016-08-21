@@ -3,15 +3,10 @@ language: bash
 services: docker
 
 env:
-  - DB=mysql VERSION=3.3
-  - DB=mysql VERSION=3.2
-  - DB=mysql VERSION=3.1
-  - DB=sqlite VERSION=3.3
-  - DB=sqlite VERSION=3.2
-  - DB=sqlite VERSION=3.1
+  - DB=mysql
+  - DB=sqlite
 
 before_script:
-  - cd "$VERSION"
   - image="$(awk '$1 == "FROM" { print $2; exit }' unicorn/Dockerfile)"
   - if [ '$DB' = 'mysql' ]; then MYSQL_HOST=localhost; fi 
 
