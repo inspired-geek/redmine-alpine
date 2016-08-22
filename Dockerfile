@@ -1,12 +1,12 @@
 FROM alpine:latest
 MAINTAINER Alexey Ivanov <lexa.ivanov@gmail.com>
 
-LABEL org.label-schema.docker.dockerfile="./3.3/Dockerfile" \
+LABEL org.label-schema.docker.dockerfile="./Dockerfile" \
 	org.label-schema.license="MIT" \
 	org.label-schema.name="redmine-alpine" \
 	org.label-schema.vcs-type="Git" \
 	org.label-schema.vcs-url="https://github.com/inspired-geek/redmine-alpine" \
-        org.label-schema.version="3.3"
+        org.label-schema.version="latest"
 
 ENV BRANCH_NAME=master \
         RAILS_ENV=production
@@ -17,6 +17,7 @@ RUN addgroup -S redmine \
         && adduser -S -G redmine redmine \
 	&& apk --no-cache add --virtual .run-deps \
                 mariadb-client-libs \
+		sqlite-libs \
                 imagemagick \
                 tzdata \
                 ruby \

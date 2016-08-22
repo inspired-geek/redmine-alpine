@@ -8,7 +8,7 @@ env:
 
 before_script:
   - image="$(awk '$1 == "FROM" { print $2; exit }' unicorn/Dockerfile)"
-  - if [ '$DB' = 'mysql' ]; then MYSQL_HOST=localhost; fi 
+  - sh -c "if [ '$DB' = 'mysql' ]; then MYSQL_HOST=localhost; fi" 
 
 script:
   - docker build -t "$image" .
