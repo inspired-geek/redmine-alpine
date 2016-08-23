@@ -2,7 +2,9 @@ sudo: false
 
 language: bash
 
-services: docker
+services: 
+  - docker
+  - mysql
 
 env:
   - DB=mysql
