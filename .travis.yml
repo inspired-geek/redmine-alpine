@@ -1,3 +1,5 @@
+sudo: false
+
 language: bash
 
 services: docker
@@ -8,7 +10,7 @@ env:
 
 before_script:
   - image="$(awk '$1 == "FROM" { print $2; exit }' unicorn/Dockerfile)"
-  - if [ $DB = 'mysql' ]; then MYSQL_FLAGS="-e REDMINE_DB_MYSQL=localhost"; else MYSQL_FLAGS=""; fi 
+  - if [ $DB = 'mysql' ]; then MYSQL_FLAGS="-e REDMINE_DB_MYSQL=127.0.0.1"; else MYSQL_FLAGS=""; fi 
 
 script:
   - docker build -t "$image" .
