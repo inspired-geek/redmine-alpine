@@ -17,6 +17,7 @@ RUN addgroup -S redmine \
         && adduser -S -G redmine redmine \
 	&& apk --no-cache add --virtual .run-deps \
                 mariadb-client-libs \
+                sqlite-libs \
                 imagemagick \
                 tzdata \
                 ruby \
