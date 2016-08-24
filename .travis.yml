@@ -5,12 +5,6 @@ language: bash
 services: 
   - docker
 
-addons:
-  - mariadb
-
-env:
-  - DB=sqlite
-
 before_script:
   - image="$(awk '$1 == "FROM" { print $2; exit }' unicorn/Dockerfile)"
   - if [ $DB = 'mariadb' ]; then MYSQL_FLAGS="-e REDMINE_DB_MYSQL=127.0.0.1 -e REDMINE_DB_USERNAME=root"; else MYSQL_FLAGS=""; fi
@@ -33,5 +27,6 @@ after_script:
 matrix:
   include:
     - env: DB=mariadb
-    addons:
-      mariadb: 10.1
+      addons:
+        mariadb: 10.1
+    - env: DB=sqlite
