@@ -2,6 +2,7 @@ language: bash
 
 services: 
   - docker
+  - mariadb
 
 before_script:
   - image="$(awk '$1 == "FROM" { print $2; exit }' unicorn/Dockerfile)"
