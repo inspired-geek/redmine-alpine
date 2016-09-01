@@ -1,7 +1,7 @@
 Extra small Redmine container based on Alpine linux
 =======================================
 
-[![Build Status](https://travis-ci.org/inspired-geek/redmine-alpine.svg?branch=master)](https://travis-ci.org/inspired-geek/redmine-alpine) [![](https://images.microbadger.com/badges/image/inspiredgeek/redmine-alpine.svg)](http://microbadger.com/images/inspiredgeek/redmine-alpine "Get your own image badge on microbadger.com")
+[![Docker Repository on Quay](https://quay.io/repository/inspired_geek/redmine-alpine/status "Docker Repository on Quay")](https://quay.io/repository/inspired_geek/redmine-alpine) [![](https://images.microbadger.com/badges/image/inspiredgeek/redmine-alpine.svg)](http://microbadger.com/images/inspiredgeek/redmine-alpine "Get your own image badge on microbadger.com")
 
 It's been inspired by official [Redmine](https://hub.docker.com/_/redmine/) image but optimized in size.
 Image has mysql and sqlite3 support built in.
@@ -13,9 +13,9 @@ If you need another database or web server or even some scm support feel free to
 
 Test run:
 
-    docker run -d -p 3000:3000 inspiredgeek/redmine-alpine
+    docker run -d -p 3000:3000 inspiredgeek/redmine-alpine:3.3
 
 More close to production run with unicorn:
 
-    docker run -d -p 8080:8080 -v redmine-files:/usr/src/redmine/files inspiredgeek/redmine-alpine:unicorn
+    docker run -d -p 8080:8080 -v redmine-files:/usr/src/redmine/files inspiredgeek/redmine-alpine:unicorn:3.3-unicorn
 
