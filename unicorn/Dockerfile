@@ -15,4 +15,6 @@ RUN apk add --no-cache --virtual .build-deps \
 	&& gem install unicorn \
 	&& apk --purge del .build-deps
 
-CMD ["unicorn", "/usr/src/redmine/config.ru"]
+COPY unicorn.conf.rb /usr/src/redmine/
+
+CMD ["unicorn_rails", "-c", "/usr/src/redmine/unicorn.conf.rb", "-E", "production"]

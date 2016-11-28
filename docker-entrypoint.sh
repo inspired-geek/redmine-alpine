@@ -2,7 +2,7 @@
 set -e
 
 case "$1" in
-	unicorn|rails|rake)
+	unicorn_rails|rails|rake)
 		if [ ! -f './config/database.yml' ]; then
 			if [ "$MYSQL_PORT_3306_TCP" ]; then
 				: "${REDMINE_DB_MYSQL:=mysql}"
