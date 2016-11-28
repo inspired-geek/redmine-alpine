@@ -1,0 +1,27 @@
+version: '2'
+services:
+    redmine:
+        image: inspiredgeek/redmine-alpine:unicorn
+        ports:
+            - "8080:8080"
+        environment:
+            REDMINE_DB_MYSQL: db
+            REDMINE_DB_PASSWORD: redmine
+            REDMINE_DB_USERNAME: redmine
+            REDMINE_DB_DATABASE: redmine
+        volumes:
+            - redmine-files:/usr/src/redmine/files
+        depends_on:
+            - db
+    db:
+        image: mariadb
+        environment:
+            MYSQL_ROOT_PASSWORD: redmine
+            MYSQL_DATABASE: redmine
+            MYSQL_USER: redmine
+            MYSQL_PASSWORD: redmine
+        volumes:
+            - redmine-data:/var/lib/mysql
+volumes:
+    redmine-files:
+    redmine-data:
