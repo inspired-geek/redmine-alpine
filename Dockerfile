@@ -24,7 +24,7 @@ RUN addgroup -S redmine \
 		musl-utils \
                 mariadb-client-libs \
 		sqlite-libs \
-                imagemagick \
+                'imagemagick<7' \
                 tzdata \
                 'ruby<2.4' \
                 tini \
