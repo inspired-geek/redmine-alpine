@@ -1,4 +1,4 @@
-FROM alpine:latest
+FROM alpine:3.5
 MAINTAINER Alexey Ivanov <lexa.ivanov@gmail.com>
 
 LABEL org.label-schema.docker.dockerfile="./Dockerfile" \
@@ -18,7 +18,7 @@ RUN addgroup -S redmine \
 	&& apk --no-cache add --virtual .run-deps \
                 mariadb-client-libs \
 		sqlite-libs \
-                'imagemagick<7' \
+                imagemagick \
                 tzdata \
                 ruby \
 		ruby-bigdecimal \
