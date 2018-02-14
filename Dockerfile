@@ -18,7 +18,7 @@ RUN addgroup -S redmine \
 	&& apk --no-cache add --virtual .run-deps \
                 mariadb-client-libs \
 		sqlite-libs \
-                imagemagick \
+                'imagemagick<7' \
                 tzdata \
                 ruby \
 		ruby-bigdecimal \
