@@ -1,7 +1,7 @@
 FROM inspiredgeek/redmine-alpine:3.2
-MAINTAINER Alexey Ivanov <lexa.ivanov@gmail.com>
 
-LABEL org.label-schema.docker.dockerfile="./3.2/unicorn/Dockerfile" \
+LABEL maintainer="Alexey Ivanov <lexa.ivanov@gmail.com>" \
+	org.label-schema.docker.dockerfile="./3.2/unicorn/Dockerfile" \
         org.label-schema.license="MIT" \
         org.label-schema.name="redmine-alpine" \
         org.label-schema.vcs-type="Git" \
@@ -9,8 +9,6 @@ LABEL org.label-schema.docker.dockerfile="./3.2/unicorn/Dockerfile" \
         org.label-schema.version="3.2-unicorn"
 
 RUN apk --no-cache add --upgrade \
-        --repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
-        --repository http://dl-cdn.alpinelinux.org/alpine/edge/community/ \
         --virtual .build-deps \
 		ruby-dev \
 		build-base \
