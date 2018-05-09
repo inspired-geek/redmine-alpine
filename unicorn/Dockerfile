@@ -1,12 +1,12 @@
-FROM inspiredgeek/redmine-alpine:3.3
+FROM inspiredgeek/redmine-alpine:3.4
 
 LABEL maintainer="Alexey Ivanov <lexa.ivanov@gmail.com>" \
-	org.label-schema.docker.dockerfile="./3.3/unicorn/Dockerfile" \
+	org.label-schema.docker.dockerfile="./3.4/unicorn/Dockerfile" \
         org.label-schema.license="MIT" \
         org.label-schema.name="redmine-alpine" \
         org.label-schema.vcs-type="Git" \
         org.label-schema.vcs-url="https://github.com/inspired-geek/redmine-alpine" \
-        org.label-schema.version="3.3-unicorn"
+        org.label-schema.version="3.4-unicorn"
 
 RUN apk add --no-cache --virtual .build-deps \
 		ruby-dev \

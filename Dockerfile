@@ -1,14 +1,14 @@
-FROM alpine:3.5
+FROM alpine:3.7
 
 LABEL maintainer="Alexey Ivanov <lexa.ivanov@gmail.com>" \
-	org.label-schema.docker.dockerfile="./3.3/Dockerfile" \
+	org.label-schema.docker.dockerfile="./3.4/Dockerfile" \
 	org.label-schema.license="MIT" \
 	org.label-schema.name="redmine-alpine" \
 	org.label-schema.vcs-type="Git" \
 	org.label-schema.vcs-url="https://github.com/inspired-geek/redmine-alpine" \
-        org.label-schema.version="3.3"
+        org.label-schema.version="3.4"
 
-ENV BRANCH_NAME=3.3-stable \
+ENV BRANCH_NAME=3.4-stable \
         RAILS_ENV=production
 
 WORKDIR /usr/src/redmine
@@ -18,11 +18,12 @@ RUN addgroup -S redmine \
 	&& apk --no-cache add --virtual .run-deps \
                 mariadb-client-libs \
                 sqlite-libs \
-                imagemagick \
+                imagemagick6 \
                 tzdata \
                 ruby \
 		ruby-bigdecimal \
 		ruby-bundler \
+                ruby-json \
                 tini \
                 su-exec \
                 bash \
@@ -30,7 +31,7 @@ RUN addgroup -S redmine \
                 build-base \
                 ruby-dev \
                 libxslt-dev \
-                imagemagick-dev \
+                imagemagick6-dev \
                 mariadb-dev \
                 sqlite-dev \
                 linux-headers \
