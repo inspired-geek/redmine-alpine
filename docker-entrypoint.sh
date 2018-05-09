@@ -78,11 +78,6 @@ case "$1" in
 		# remove PID file to enable restarting the container
 		rm -f /usr/src/redmine/tmp/pids/server.pid
 		
-		if [ "$1" = 'unicorn' ]; then
-			# Don't fear the reaper.
-			set -- /sbin/tini -- "$@"
-		fi
-		
 		set -- su-exec redmine "$@"
 		;;
 esac

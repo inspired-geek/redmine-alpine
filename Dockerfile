@@ -1,7 +1,7 @@
 FROM alpine:3.3
-MAINTAINER Alexey Ivanov <lexa.ivanov@gmail.com>
 
-LABEL org.label-schema.docker.dockerfile="./3.1/Dockerfile" \
+LABEL maintainer="Alexey Ivanov <lexa.ivanov@gmail.com>" \
+	org.label-schema.docker.dockerfile="./3.1/Dockerfile" \
         org.label-schema.license="MIT" \
         org.label-schema.name="redmine-alpine" \
         org.label-schema.vcs-type="Git" \
@@ -16,23 +16,19 @@ WORKDIR /usr/src/redmine
 RUN addgroup -S redmine \
         && adduser -S -G redmine redmine \
 	&& apk --no-cache add --upgrade \
-        --repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
-        --repository http://dl-cdn.alpinelinux.org/alpine/edge/community/ \
         --virtual .run-deps \
          	musl \
                 musl-dev \
 		musl-utils \
-                mariadb-client-libs \
+                mariadb-client \
 		sqlite-libs \
-                'imagemagick<7' \
+                imagemagick \
                 tzdata \
-                'ruby<2.4' \
-                tini \
+                ruby \
+                ruby-bigdecimal \
                 su-exec \
                 bash \
         && apk --no-cache add \
-	--repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
-        --repository http://dl-cdn.alpinelinux.org/alpine/edge/community/ \
         --virtual .build-deps \
                 build-base \
                 ruby-dev \
