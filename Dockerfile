@@ -1,7 +1,7 @@
-FROM alpine:3.4
-MAINTAINER Alexey Ivanov <lexa.ivanov@gmail.com>
+FROM alpine:3.5
 
-LABEL org.label-schema.docker.dockerfile="./3.3/Dockerfile" \
+LABEL maintainer="Alexey Ivanov <lexa.ivanov@gmail.com>" \
+	org.label-schema.docker.dockerfile="./3.3/Dockerfile" \
 	org.label-schema.license="MIT" \
 	org.label-schema.name="redmine-alpine" \
 	org.label-schema.vcs-type="Git" \
