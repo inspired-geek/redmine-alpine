@@ -1,7 +1,7 @@
 FROM inspiredgeek/redmine-alpine:latest
-MAINTAINER Alexey Ivanov <lexa.ivanov@gmail.com>
 
-LABEL org.label-schema.docker.dockerfile="./latest/unicorn/Dockerfile" \
+LABEL maintainer="Alexey Ivanov <lexa.ivanov@gmail.com>" \
+	org.label-schema.docker.dockerfile="./latest/unicorn/Dockerfile" \
         org.label-schema.license="MIT" \
         org.label-schema.name="redmine-alpine" \
         org.label-schema.vcs-type="Git" \

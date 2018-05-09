@@ -1,7 +1,7 @@
-FROM alpine:3.5
-MAINTAINER Alexey Ivanov <lexa.ivanov@gmail.com>
+FROM alpine:latest
 
-LABEL org.label-schema.docker.dockerfile="./Dockerfile" \
+LABEL maintainer="Alexey Ivanov <lexa.ivanov@gmail.com>" \
+	org.label-schema.docker.dockerfile="./Dockerfile" \
 	org.label-schema.license="MIT" \
 	org.label-schema.name="redmine-alpine" \
 	org.label-schema.vcs-type="Git" \
@@ -18,11 +18,12 @@ RUN addgroup -S redmine \
 	&& apk --no-cache add --virtual .run-deps \
                 mariadb-client-libs \
 		sqlite-libs \
-                imagemagick \
+                imagemagick6 \
                 tzdata \
                 ruby \
 		ruby-bigdecimal \
 		ruby-bundler \
+                ruby-json \
                 tini \
                 su-exec \
                 bash \
@@ -30,7 +31,7 @@ RUN addgroup -S redmine \
                 build-base \
                 ruby-dev \
                 libxslt-dev \
-                imagemagick-dev \
+                imagemagick6-dev \
                 mariadb-dev \
                 sqlite-dev \
                 linux-headers \
