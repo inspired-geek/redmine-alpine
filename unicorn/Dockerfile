@@ -9,14 +9,17 @@ LABEL maintainer="Alexey Ivanov <lexa.ivanov@gmail.com>" \
         org.label-schema.version="latest-unicorn"
 
 
+USER root
 
 RUN apk add --no-cache --virtual .build-deps \
 		ruby-dev \
 		build-base \
 		linux-headers \
 	&& gem install unicorn \
-	&& apk --purge del .build-deps
+	&& apk --purge del .build-deps \
+        && chown -R redmine:redmine ./
 
+USER redmine
 COPY unicorn.conf.rb /usr/src/redmine/
 
 CMD ["unicorn_rails", "-c", "/usr/src/redmine/unicorn.conf.rb", "-E", "production"]

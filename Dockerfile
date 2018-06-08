@@ -24,8 +24,6 @@ RUN addgroup -S redmine \
 		ruby-bigdecimal \
 		ruby-bundler \
                 ruby-json \
-                tini \
-                su-exec \
                 bash \
         && apk --no-cache add --virtual .build-deps \
                 build-base \
@@ -44,7 +42,6 @@ RUN addgroup -S redmine \
 	&& git clone -b ${BRANCH_NAME} https://github.com/redmine/redmine.git . \
         && rm -rf files/delete.me log/delete.me .git test\
         && mkdir -p tmp/pdf public/plugin_assets \
-        && chown -R redmine:redmine ./\
 	&& for adapter in mysql2 sqlite3; do \
 		echo "$RAILS_ENV:" > ./config/database.yml; \
 		echo "  adapter: $adapter" >> ./config/database.yml; \
@@ -52,7 +49,10 @@ RUN addgroup -S redmine \
 	done \
 	&& rm ./config/database.yml \
 	&& rm -rf /root/* `gem env gemdir`/cache \
-        && apk --purge del .build-deps
+        && apk --purge del .build-deps \
+        && chown -R redmine:redmine ./
+
+USER redmine
 
 VOLUME /usr/src/redmine/files
 

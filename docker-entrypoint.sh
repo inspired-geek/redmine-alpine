@@ -34,7 +34,6 @@ case "$1" in
 				: "${REDMINE_DB_ENCODING:=utf8}"
 				
 				mkdir -p "$(dirname "$REDMINE_DB_DATABASE")"
-				chown -R redmine:redmine "$(dirname "$REDMINE_DB_DATABASE")"
 			fi
 			
 			REDMINE_DB_ADAPTER="$adapter"
@@ -66,24 +65,16 @@ case "$1" in
 					  secret_key_base: "$REDMINE_SECRET_KEY_BASE"
 				YML
 			elif [ ! -f /usr/src/redmine/config/initializers/secret_token.rb ]; then
-				su-exec redmine rake generate_secret_token
+				rake generate_secret_token
 			fi
 		fi
 		if [ "$1" != 'rake' -a -z "$REDMINE_NO_DB_MIGRATE" ]; then
-			su-exec redmine rake db:migrate
+			rake db:migrate
 		fi
-		
-		chown -R redmine:redmine files log public/plugin_assets
 		
 		# remove PID file to enable restarting the container
 		rm -f /usr/src/redmine/tmp/pids/server.pid
 		
-		if [ "$1" = 'unicorn' ]; then
-			# Don't fear the reaper.
-			set -- /sbin/tini -- "$@"
-		fi
-		
-		set -- su-exec redmine "$@"
 		;;
 esac
 
