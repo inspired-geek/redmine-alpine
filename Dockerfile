@@ -53,9 +53,11 @@ RUN addgroup -S redmine \
   && apk --purge del .build-deps 
 
 COPY config/* ./config/
-RUN chown -R redmine:redmine ./
 
-USER redmine
+RUN chgrp -R 0 /usr/src/redmine && \
+    chmod -R g=u /usr/src/redmine
+
+USER 10001
 VOLUME /usr/src/redmine/files
 
 COPY docker-entrypoint.sh /
