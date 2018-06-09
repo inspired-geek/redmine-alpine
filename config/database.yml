@@ -1,0 +1,7 @@
+production:
+  adapter:  <%= ENV["DB_ADAPTER"] %>
+  database: <%= ENV["DB_NAME"] %>
+  host:     <%= ENV["DB_HOST"] %>
+  username: <%= ENV["DB_USER"] %>
+  password: <%= ENV["DB_PASSWORD"] %>
+  encoding: utf8

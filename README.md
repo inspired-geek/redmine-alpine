@@ -18,4 +18,3 @@ Test run:
 More close to production run with unicorn:
 
     docker run -d -p 8080:8080 -v redmine-files:/usr/src/redmine/files inspiredgeek/redmine-alpine:unicorn
-
