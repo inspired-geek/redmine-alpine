@@ -52,7 +52,7 @@ RUN addgroup -S redmine \
   && rm -rf /root/* `gem env gemdir`/cache \
   && apk --purge del .build-deps 
 
-COPY config/*.yml ./config/
+COPY config/* ./config/
 RUN chown -R redmine:redmine ./
 
 USER redmine
