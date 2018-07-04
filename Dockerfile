@@ -12,53 +12,48 @@ ENV BRANCH_NAME=master \
   RAILS_ENV=production \
   REDMINE_SECRET_KEY_BASE=secret \
   DB_ADAPTER=sqlite3 \
-  DB_NAME=/tmp/redmine.db
+  DB_NAME=/tmp/redmine.db \
+  HOME=/usr/src/redmine \
+  GEM_HOME=/usr/src/redmine/.gem \
+  GEM_PATH=/usr/src/redmine/.gem \
+  PATH=$PATH:/usr/src/redmine/.gem/bin
 
 WORKDIR /usr/src/redmine
 
-RUN addgroup -S redmine \
-  && adduser -S -G redmine redmine \
-  && apk --no-cache add --virtual .run-deps \
+RUN apk --no-cache add --virtual .run-deps \
     mariadb-client-libs \
     sqlite-libs \
     imagemagick6 \
-    tzdata \
     ruby \
-    ruby-bigdecimal \
-    ruby-bundler \
-    ruby-json \
   && apk --no-cache add --virtual .build-deps \
     build-base \
     ruby-dev \
-    libxslt-dev \
     imagemagick6-dev \
     mariadb-dev \
     sqlite-dev \
-    linux-headers \
-    patch \
-    coreutils \
   && echo 'gem: --no-document' > /etc/gemrc \
   && gem update --system \
   && wget https://github.com/redmine/redmine/archive/master.tar.gz \
   && tar zxf master.tar.gz --strip-components=1 \
   && rm -rf master.tar.gz files/delete.me log/delete.me test\
   && mkdir -p tmp/pdf public/plugin_assets \
-  && for adapter in mysql2 sqlite3; do \
-    echo "$RAILS_ENV:" > ./config/database.yml; \
-    echo "  adapter: $adapter" >> ./config/database.yml; \
-    bundle install --without development test; \
-  done \
-  && rm ./config/database.yml \
-  && rm -rf /root/* `gem env gemdir`/cache \
+  && gem install bundler mysql2 sqlite3 \
+  && echo 'gem "json"' >> Gemfile \
+  && echo 'gem "bigdecimal"' >> Gemfile \
+  && echo 'gem "tzinfo-data"' >> Gemfile \
+  && bundle install --without development test \
+  && rm -rf .gem/cache \
   && apk --purge del .build-deps 
 
 COPY config/* ./config/
 
-RUN chgrp -R 0 /usr/src/redmine && \
-    chmod -R g=u /usr/src/redmine
+RUN chgrp -R 0 /usr/src/redmine \
+  && chmod -R g=u /usr/src/redmine
 
 USER 10001
-VOLUME /usr/src/redmine/files
+VOLUME /usr/src/redmine/files /usr/src/redmine/publib/plugin_assets /usr/src/redmine/plugins /usr/src/redmine/public/themes
+
+RUN printenv
 
 COPY docker-entrypoint.sh /
 ENTRYPOINT ["/docker-entrypoint.sh"]

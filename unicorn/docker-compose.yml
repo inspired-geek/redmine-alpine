@@ -12,6 +12,9 @@ services:
       DB_NAME: redmine
     volumes:
       - redmine-files:/usr/src/redmine/files
+      - redmine-plugins:/usr/src/redmine/plugins
+      - redmine-plugin-assets:/usr/src/redmine/public/plugin_assets
+      - redmine-themes:/usr/src/redmine/public/themes
     depends_on:
       - db
   db:
@@ -26,3 +29,6 @@ services:
 volumes:
   redmine-files:
   redmine-data:
+  redmine-plugins:
+  redmine-plugin-assets:
+  redmine-themes
