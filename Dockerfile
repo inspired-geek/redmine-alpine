@@ -53,8 +53,6 @@ RUN chgrp -R 0 /usr/src/redmine \
 USER 10001
 VOLUME /usr/src/redmine/files /usr/src/redmine/publib/plugin_assets /usr/src/redmine/plugins /usr/src/redmine/public/themes
 
-RUN printenv
-
 COPY docker-entrypoint.sh /
 ENTRYPOINT ["/docker-entrypoint.sh"]
 

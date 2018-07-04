@@ -14,7 +14,6 @@ RUN apk add --no-cache --virtual .build-deps \
     ruby-dev \
     build-base \
     linux-headers \
-  && printenv \
   && gem install unicorn \
   && apk --purge del .build-deps \ 
   && chgrp -R 0 /usr/src/redmine \
