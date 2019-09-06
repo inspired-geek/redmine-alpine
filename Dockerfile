@@ -21,11 +21,12 @@ ENV BRANCH_NAME=master \
 WORKDIR /usr/src/redmine
 
 RUN apk --no-cache add --virtual .run-deps \
-    mariadb-client-libs \
+    mariadb-client \
     sqlite-libs \
     imagemagick6 \
     ruby \
   && apk --no-cache add --virtual .build-deps \
+    linux-headers \
     build-base \
     ruby-dev \
     imagemagick6-dev \
@@ -41,6 +42,8 @@ RUN apk --no-cache add --virtual .run-deps \
   && echo 'gem "json"' >> Gemfile \
   && echo 'gem "bigdecimal"' >> Gemfile \
   && echo 'gem "tzinfo-data"' >> Gemfile \
+  && echo 'gem "webrick"' >> Gemfile \
+  && echo 'gem "etc"' >> Gemfile \
   && bundle install --without development test \
   && rm -rf .gem/cache \
   && apk --purge del .build-deps 
