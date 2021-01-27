@@ -25,6 +25,7 @@ RUN apk --no-cache add --virtual .run-deps \
     sqlite-libs \
     imagemagick6 \
     ruby \
+    ruby-etc \
   && apk --no-cache add --virtual .build-deps \
     linux-headers \
     build-base \
