@@ -40,7 +40,8 @@ RUN addgroup -S redmine \
                 curl \
                 git \
         && echo 'gem: --no-document' > /etc/gemrc \
-        && gem update --system \
+        && gem i rubygems-update -v '<3' \
+        && update_rubygems \
 	&& git clone -b ${BRANCH_NAME} https://github.com/redmine/redmine.git . \
         && rm -rf files/delete.me log/delete.me .git test\
         && mkdir -p tmp/pdf public/plugin_assets \
