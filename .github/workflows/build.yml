@@ -30,7 +30,7 @@ jobs:
           tags: ${{ env.IMAGE_TAGS }}-unicorn
           context: unicorn
           containerfiles: |
-            ./Containerfile
+            ./unicorn/Containerfile
           extra-args: |
             --squash
             --from ${{ steps.build_base_image.outputs.image-with-tag }}
