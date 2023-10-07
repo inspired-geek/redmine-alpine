@@ -23,14 +23,14 @@ WORKDIR /usr/src/redmine
 RUN apk --no-cache add --virtual .run-deps \
     mariadb-client \
     sqlite-libs \
-    imagemagick6 \
+    imagemagick \
     ruby \
     ruby-etc \
   && apk --no-cache add --virtual .build-deps \
     linux-headers \
     build-base \
     ruby-dev \
-    imagemagick6-dev \
+    imagemagick-dev \
     mariadb-dev \
     sqlite-dev \
   && echo 'gem: --no-document' > /etc/gemrc \
