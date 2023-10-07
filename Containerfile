@@ -1,12 +1,12 @@
 FROM alpine:3.7
 
-LABEL maintainer="Alexey Ivanov <lexa.ivanov@gmail.com>" \
-	org.label-schema.docker.dockerfile="./3.4/Dockerfile" \
-	org.label-schema.license="MIT" \
-	org.label-schema.name="redmine-alpine" \
-	org.label-schema.vcs-type="Git" \
-	org.label-schema.vcs-url="https://github.com/inspired-geek/redmine-alpine" \
-        org.label-schema.version="3.4"
+LABEL org.opencontainers.image.authors="Alexey Ivanov <lexa.ivanov@gmail.com>" \
+        org.opencontainers.image.description="Extra small Redmine container based on Alpine linux" \
+        org.opencontainers.image.url="https://github.com/inspired-geek/redmine-alpine" \
+        org.opencontainers.image.licenses="MIT" \
+        org.opencontainers.image.title="Alpine based Redmine" \
+        org.opencontainers.image.source="https://github.com/inspired-geek/redmine-alpine.git" \
+        org.opencontainers.image.version="3.4"
 
 ENV BRANCH_NAME=3.4-stable \
         RAILS_ENV=production

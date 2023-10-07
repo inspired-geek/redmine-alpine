@@ -20,6 +20,7 @@ jobs:
           tags: ${{ env.IMAGE_TAGS }}
           containerfiles: |
             ./Containerfile
+          oci: true
           extra-args: |
             --squash
       - name: Build unicorn image
@@ -31,6 +32,7 @@ jobs:
           context: unicorn
           containerfiles: |
             ./unicorn/Containerfile
+          oci: true
           extra-args: |
             --squash
             --from ${{ steps.build_base_image.outputs.image-with-tag }}
