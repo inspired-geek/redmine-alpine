@@ -1,7 +1,6 @@
 # Extra small Redmine container based on Alpine linux
 
-![Docker Image Size (tag)](https://ghcr-badge.deta.dev/inspired-geek/redmine-alpine/size?tag=latest&label=base+image+size)
-![Docker Image Size (tag)](https://ghcr-badge.deta.dev/inspired-geek/redmine-alpine/size?tag=unicorn&label=unicorn+image+size)
+![Docker Image Size (tag)](https://ghcr-badge.deta.dev/inspired-geek/redmine-alpine/size?tag=latest)
 
 It's been inspired by official [Redmine](https://hub.docker.com/_/redmine/) image but optimized in size.
 Image has mysql and sqlite3 support built in.
@@ -13,8 +12,6 @@ If you need another database or web server or even some scm support feel free to
 
 Test run:
 
-    docker run -d -p 3000:3000 inspiredgeek/redmine-alpine
-
-More close to production run with unicorn:
-
-    docker run -d -p 8080:8080 -v redmine-files:/usr/src/redmine/files inspiredgeek/redmine-alpine:unicorn
+```(shell)
+    docker run -d -p 8080:8080 ghcr.io/inspired-geek/redmine-alpine:latest
+```

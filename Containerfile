@@ -39,7 +39,7 @@ RUN apk --no-cache add --virtual .run-deps \
   && tar zxf master.tar.gz --strip-components=1 \
   && rm -rf master.tar.gz files/delete.me log/delete.me test\
   && mkdir -p tmp/pdf public/plugin_assets \
-  && gem install bundler mysql2 sqlite3 \
+  && gem install bundler mysql2 sqlite3 unicorn \
   && echo 'gem "json"' >> Gemfile \
   && echo 'gem "bigdecimal"' >> Gemfile \
   && echo 'gem "tzinfo-data"' >> Gemfile \
@@ -60,5 +60,5 @@ VOLUME /usr/src/redmine/files /usr/src/redmine/publib/plugin_assets /usr/src/red
 COPY docker-entrypoint.sh /
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-EXPOSE 3000
-CMD ["rails", "server", "-b", "0.0.0.0"]
+EXPOSE 8080
+CMD ["unicorn_rails", "-c", "/usr/src/redmine/config/unicorn.conf.rb", "-E", "production"]
