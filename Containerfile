@@ -13,6 +13,8 @@ ENV BRANCH_NAME=3.4-stable \
 
 WORKDIR /usr/src/redmine
 
+USER root
+
 RUN addgroup -S redmine \
         && adduser -S -G redmine redmine \
 	&& apk --no-cache add --virtual .run-deps \

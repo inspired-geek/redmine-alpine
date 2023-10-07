@@ -1,4 +1,4 @@
-name: Build Image using Containerfile
+name: Build Images using Containerfile
 on: [push]
 env:
   IMAGE_NAME: redmine-alpine
@@ -12,20 +12,45 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
-      - name: Build Image
-        id: build_image
+      - name: Build base image
+        id: build_base_image
         uses: redhat-actions/buildah-build@v2.12
         with:
           image: ${{ env.IMAGE_NAME }}
           tags: ${{ env.IMAGE_TAGS }}
           containerfiles: |
             ./Containerfile
-      - name: Push To GHCR
-        uses: redhat-actions/push-to-registry@v2.7
-        id: push
+          extra-args: |
+            --squash
+      - name: Build unicorn image
+        id: build_unicorn_image
+        uses: redhat-actions/buildah-build@v2.12
         with:
-          image: ${{ steps.build_image.outputs.image }}
-          tags: ${{ steps.build_image.outputs.tags }}
+          image: ${{ env.IMAGE_NAME }}
+          tags: ${{ env.IMAGE_TAGS }}-unicorn
+          context: unicorn
+          containerfiles: |
+            ./Containerfile
+          extra-args: |
+            --squash
+            --from ${{ steps.build_base_image.outputs.image-with-tag }}
+      - name: Push base image to GHCR
+        uses: redhat-actions/push-to-registry@v2.7
+        id: push-base
+        with:
+          image: ${{ steps.build_base_image.outputs.image }}
+          tags: ${{ steps.build_base_image.outputs.tags }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+          extra-args: |
+            --disable-content-trust
+      - name: Push unicorn image to GHCR
+        uses: redhat-actions/push-to-registry@v2.7
+        id: push-unicorn
+        with:
+          image: ${{ steps.build_unicorn_image.outputs.image }}
+          tags: ${{ steps.build_unicorn_image.outputs.tags }}
           registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ env.REGISTRY_USER }}
           password: ${{ env.REGISTRY_PASSWORD }}
@@ -34,4 +59,5 @@ jobs:
 
       - name: Echo outputs
         run: |
-          echo "${{ toJSON(steps.push.outputs) }}"
+          echo "${{ toJSON(steps.push-base.outputs) }}"
+          echo "${{ toJSON(steps.push-unicorn.outputs) }}"
