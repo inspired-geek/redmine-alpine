@@ -14,17 +14,16 @@ jobs:
         uses: actions/checkout@v3
       - name: Build Image
         id: build_image
-        uses: redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@v2.12
         with:
           image: ${{ env.IMAGE_NAME }}
           tags: ${{ env.IMAGE_TAGS }}
           containerfiles: |
             ./Containerfile
       - name: Push To GHCR
-        uses: ./
+        uses: redhat-actions/push-to-registry@v2.7
         id: push
         with:
-          file: ./Containerfile
           image: ${{ steps.build_image.outputs.image }}
           tags: ${{ steps.build_image.outputs.tags }}
           registry: ${{ env.IMAGE_REGISTRY }}
