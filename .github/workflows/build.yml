@@ -1,0 +1,64 @@
+name: Build Images using Containerfile
+on: [push]
+env:
+  IMAGE_NAME: redmine-alpine
+  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+  REGISTRY_USER: ${{ github.actor }}
+  REGISTRY_PASSWORD: ${{ github.token }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Build base image
+        id: build_base_image
+        uses: redhat-actions/buildah-build@v2.12
+        with:
+          image: ${{ env.IMAGE_NAME }}
+          tags: latest
+          containerfiles: |
+            ./Containerfile
+          oci: true
+          extra-args: |
+            --squash
+      - name: Build unicorn image
+        id: build_unicorn_image
+        uses: redhat-actions/buildah-build@v2.12
+        with:
+          image: ${{ env.IMAGE_NAME }}
+          tags: unicorn
+          context: unicorn
+          containerfiles: |
+            ./unicorn/Containerfile
+          oci: true
+          extra-args: |
+            --squash
+            --from ${{ steps.build_base_image.outputs.image-with-tag }}
+      - name: Push base image to GHCR
+        uses: redhat-actions/push-to-registry@v2.7
+        id: push-base
+        with:
+          image: ${{ steps.build_base_image.outputs.image }}
+          tags: ${{ steps.build_base_image.outputs.tags }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+          extra-args: |
+            --disable-content-trust
+      - name: Push unicorn image to GHCR
+        uses: redhat-actions/push-to-registry@v2.7
+        id: push-unicorn
+        with:
+          image: ${{ steps.build_unicorn_image.outputs.image }}
+          tags: ${{ steps.build_unicorn_image.outputs.tags }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+          extra-args: |
+            --disable-content-trust
+
+      - name: Echo outputs
+        run: |
+          echo "${{ toJSON(steps.push-base.outputs) }}"
+          echo "${{ toJSON(steps.push-unicorn.outputs) }}"

@@ -31,4 +31,4 @@ volumes:
   redmine-data:
   redmine-plugins:
   redmine-plugin-assets:
-  redmine-themes
+  redmine-themes:

@@ -1,15 +1,15 @@
-Extra small Redmine container based on Alpine linux
-=======================================
+# Extra small Redmine container based on Alpine linux
 
-[![Docker Repository on Quay](https://quay.io/repository/inspired_geek/redmine-alpine/status "Docker Repository on Quay")](https://quay.io/repository/inspired_geek/redmine-alpine) [![](https://images.microbadger.com/badges/image/inspiredgeek/redmine-alpine.svg)](http://microbadger.com/images/inspiredgeek/redmine-alpine "Get your own image badge on microbadger.com")
+![Docker Image Size (tag)](https://ghcr-badge.deta.dev/inspired-geek/redmine-alpine/size?tag=latest&label=base+image+size)
+![Docker Image Size (tag)](https://ghcr-badge.deta.dev/inspired-geek/redmine-alpine/size?tag=unicorn&label=unicorn+image+size)
 
 It's been inspired by official [Redmine](https://hub.docker.com/_/redmine/) image but optimized in size.
 Image has mysql and sqlite3 support built in.
 Also there is image with fast web server Unicorn for production usage.
 
-If you need another database or web server or even some scm support feel free to inherit these images from [Docker hub](https://hub.docker.com/r/inspiredgeek/redmine-alpine/).
+If you need another database or web server or even some scm support feel free to inherit these images from [Github](https://github.com/inspired-geek/redmine-alpine/pkgs/container/redmine-alpine).
 
-### Usage
+## Usage
 
 Test run:
 

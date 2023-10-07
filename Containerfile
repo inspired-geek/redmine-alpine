@@ -1,12 +1,12 @@
 FROM alpine:latest
 
-LABEL maintainer="Alexey Ivanov <lexa.ivanov@gmail.com>" \
-  org.label-schema.docker.dockerfile="./Dockerfile" \
-  org.label-schema.license="MIT" \
-  org.label-schema.name="redmine-alpine" \
-  org.label-schema.vcs-type="Git" \
-  org.label-schema.vcs-url="https://github.com/inspired-geek/redmine-alpine" \
-  org.label-schema.version="latest"
+LABEL org.opencontainers.image.authors="Alexey Ivanov <lexa.ivanov@gmail.com>" \
+	org.opencontainers.image.description="Extra small Redmine container based on Alpine linux" \
+	org.opencontainers.image.url="https://github.com/inspired-geek/redmine-alpine" \
+	org.opencontainers.image.licenses="MIT" \
+	org.opencontainers.image.title="Alpine based Redmine" \
+	org.opencontainers.image.source="https://github.com/inspired-geek/redmine-alpine.git" \
+	org.opencontainers.image.version="latest"
 
 ENV BRANCH_NAME=master \
   RAILS_ENV=production \
@@ -54,7 +54,7 @@ COPY config/* ./config/
 RUN chgrp -R 0 /usr/src/redmine \
   && chmod -R g=u /usr/src/redmine
 
-USER 10001
+USER 1001
 VOLUME /usr/src/redmine/files /usr/src/redmine/publib/plugin_assets /usr/src/redmine/plugins /usr/src/redmine/public/themes
 
 COPY docker-entrypoint.sh /
