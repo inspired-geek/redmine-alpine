@@ -1,61 +1,61 @@
 FROM alpine:3.7
 
 LABEL org.opencontainers.image.authors="Alexey Ivanov <lexa.ivanov@gmail.com>" \
-        org.opencontainers.image.description="Extra small Redmine container based on Alpine linux" \
-        org.opencontainers.image.url="https://github.com/inspired-geek/redmine-alpine" \
-        org.opencontainers.image.licenses="MIT" \
-        org.opencontainers.image.title="Alpine based Redmine" \
-        org.opencontainers.image.source="https://github.com/inspired-geek/redmine-alpine.git" \
-        org.opencontainers.image.version="3.4"
+	org.opencontainers.image.description="Extra small Redmine container based on Alpine linux" \
+	org.opencontainers.image.url="https://github.com/inspired-geek/redmine-alpine" \
+	org.opencontainers.image.licenses="MIT" \
+	org.opencontainers.image.title="Alpine based Redmine" \
+	org.opencontainers.image.source="https://github.com/inspired-geek/redmine-alpine.git" \
+	org.opencontainers.image.version="3.4"
 
 ENV BRANCH_NAME=3.4-stable \
-        RAILS_ENV=production
+	RAILS_ENV=production
 
 WORKDIR /usr/src/redmine
 
 USER root
 
 RUN addgroup -S redmine \
-        && adduser -S -G redmine redmine \
+	&& adduser -S -G redmine redmine \
 	&& apk --no-cache add --virtual .run-deps \
-                mariadb-client-libs \
-                sqlite-libs \
-                imagemagick6 \
-                tzdata \
-                ruby \
+		mariadb-client-libs \
+		sqlite-libs \
+		imagemagick6 \
+		tzdata \
+		ruby \
 		ruby-bigdecimal \
 		ruby-bundler \
-                ruby-json \
-                tini \
-                su-exec \
-                bash \
-        && apk --no-cache add --virtual .build-deps \
-                build-base \
-                ruby-dev \
-                libxslt-dev \
-                imagemagick6-dev \
-                mariadb-dev \
-                sqlite-dev \
-                linux-headers \
-                patch \
-                coreutils \
-                curl \
-                git \
-        && echo 'gem: --no-document' > /etc/gemrc \
-        && gem i rubygems-update -v '<3' \
-        && update_rubygems \
+		ruby-json \
+		tini \
+		su-exec \
+		bash \
+	&& apk --no-cache add --virtual .build-deps \
+		build-base \
+		ruby-dev \
+		libxslt-dev \
+		imagemagick6-dev \
+		mariadb-dev \
+		sqlite-dev \
+		linux-headers \
+		patch \
+		coreutils \
+		curl \
+		git \
+	&& echo 'gem: --no-document' > /etc/gemrc \
+	&& gem i rubygems-update -v '<3' \
+	&& update_rubygems \
 	&& git clone -b ${BRANCH_NAME} https://github.com/redmine/redmine.git . \
-        && rm -rf files/delete.me log/delete.me .git test\
-        && mkdir -p tmp/pdf public/plugin_assets \
-        && chown -R redmine:redmine ./\
+	&& rm -rf files/delete.me log/delete.me .git test\
+	&& mkdir -p tmp/pdf public/plugin_assets \
+	&& chown -R redmine:redmine ./\
 	&& for adapter in mysql2 sqlite3; do \
 		echo "$RAILS_ENV:" > ./config/database.yml; \
 		echo "  adapter: $adapter" >> ./config/database.yml; \
 		bundle install --without development test; \
 	done \
 	&& rm ./config/database.yml \
-	&& rm -rf /root/* `gem env gemdir`/cache \
-        && apk --purge del .build-deps
+	&& rm -rf /root/* "$(gem env gemdir)"/cache \
+    && apk --purge del .build-deps
 
 VOLUME /usr/src/redmine/files
 

@@ -1,12 +1,12 @@
 FROM inspiredgeek/redmine-alpine:3.4
 
 LABEL LABEL org.opencontainers.image.authors="Alexey Ivanov <lexa.ivanov@gmail.com>" \
-        org.opencontainers.image.description="Extra small Redmine container based on Alpine linux with unicorn web server embedded" \
-        org.opencontainers.image.url="https://github.com/inspired-geek/redmine-alpine" \
-        org.opencontainers.image.licenses="MIT" \
-        org.opencontainers.image.title="Alpine based Redmine with Unicorn" \
-        org.opencontainers.image.source="https://github.com/inspired-geek/redmine-alpine.git" \
-        org.opencontainers.image.version="3.4"
+	org.opencontainers.image.description="Extra small Redmine container based on Alpine linux with unicorn web server embedded" \
+	org.opencontainers.image.url="https://github.com/inspired-geek/redmine-alpine" \
+	org.opencontainers.image.licenses="MIT" \
+	org.opencontainers.image.title="Alpine based Redmine with Unicorn" \
+	org.opencontainers.image.source="https://github.com/inspired-geek/redmine-alpine.git" \
+	org.opencontainers.image.version="3.4"
 
 RUN apk add --no-cache --virtual .build-deps \
 		ruby-dev \

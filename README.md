@@ -1,7 +1,7 @@
 # Extra small Redmine container based on Alpine linux
 
-![Docker Image Size (tag)](https://ghcr-badge.deta.dev/inspired-geek/redmine-alpine/size?tag=3.4-ci&label=base+image+size)
-![Docker Image Size (tag)](https://ghcr-badge.deta.dev/inspired-geek/redmine-alpine/size?tag=3.4-ci-unicorn&label=unicorn+image+size)
+![Docker Image Size (tag)](https://ghcr-badge.deta.dev/inspired-geek/redmine-alpine/size?tag=3.4&label=base+image+size)
+![Docker Image Size (tag)](https://ghcr-badge.deta.dev/inspired-geek/redmine-alpine/size?tag=3.4-unicorn&label=unicorn+image+size)
 
 It's been inspired by official [Redmine](https://hub.docker.com/_/redmine/) image but optimized in size.
 Image has mysql and sqlite3 support built in.
