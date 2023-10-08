@@ -1,4 +1,4 @@
-FROM alpine:latest
+FROM alpine:3.11
 
 LABEL org.opencontainers.image.authors="Alexey Ivanov <lexa.ivanov@gmail.com>" \
 	org.opencontainers.image.description="Extra small Redmine container based on Alpine linux" \
@@ -6,10 +6,10 @@ LABEL org.opencontainers.image.authors="Alexey Ivanov <lexa.ivanov@gmail.com>" \
 	org.opencontainers.image.licenses="MIT" \
 	org.opencontainers.image.title="Alpine based Redmine" \
 	org.opencontainers.image.source="https://github.com/inspired-geek/redmine-alpine.git" \
-	org.opencontainers.image.version="latest"
+	org.opencontainers.image.version="4.0"
 
-ENV BRANCH_NAME=master \
-  RAILS_ENV=production \
+ENV RAILS_ENV=production \
+  REDMINE_VERSION=4.0.9 \
   REDMINE_SECRET_KEY_BASE=secret \
   DB_ADAPTER=sqlite3 \
   DB_NAME=/tmp/redmine.db \
@@ -21,35 +21,36 @@ ENV BRANCH_NAME=master \
 WORKDIR /usr/src/redmine
 
 RUN apk --no-cache add --virtual .run-deps \
-    mariadb-client \
+    mariadb-connector-c-dev \
     sqlite-libs \
-    imagemagick \
+    imagemagick6 \
     ruby \
-    ruby-etc \
   && apk --no-cache add --virtual .build-deps \
     linux-headers \
     build-base \
     ruby-dev \
-    imagemagick-dev \
+    imagemagick6-dev \
     mariadb-dev \
     sqlite-dev \
   && echo 'gem: --no-document' > /etc/gemrc \
-  && gem update --system \
-  && wget https://github.com/redmine/redmine/archive/master.tar.gz \
-  && tar zxf master.tar.gz --strip-components=1 \
-  && rm -rf master.tar.gz files/delete.me log/delete.me test\
+  && gem i bundler:2.4.20 etc:1.4.2 \
+  && wget https://redmine.org/releases/redmine-$REDMINE_VERSION.tar.gz -O redmine.tar.gz \
+  && tar zxf redmine.tar.gz --strip-components=1 \
+  && rm -rf redmine.tar.gz files/delete.me log/delete.me test\
   && mkdir -p tmp/pdf public/plugin_assets \
-  && gem install bundler mysql2 sqlite3 unicorn \
-  && echo 'gem "json"' >> Gemfile \
-  && echo 'gem "bigdecimal"' >> Gemfile \
-  && echo 'gem "tzinfo-data"' >> Gemfile \
-  && echo 'gem "webrick"' >> Gemfile \
-  && echo 'gem "etc"' >> Gemfile \
-  && bundle install --without development test \
+  && echo 'gem "unicorn", "~>6.1.0"' >> Gemfile.local \
+  && echo 'gem "sqlite3", "~>1.3.12"' >> Gemfile.local \
+  && echo 'gem "mysql2",  "~>0.5.0"' >> Gemfile.local \
+  && echo 'gem "json", "~>2.6.3"' >> Gemfile.local \
+  && echo 'gem "bigdecimal", "~>3.1.4"' >> Gemfile.local \
+  && echo 'gem "loofah", "2.19.1"' >> Gemfile.local \
+  && echo 'gem "tzinfo-data"' >> Gemfile.local \
+  && bundle config set --local without 'development test' \
+  && bundle install \
   && rm -rf .gem/cache \
   && apk --purge del .build-deps 
 
-COPY config/* ./config/
+COPY ../config/* ./config/
 
 RUN chgrp -R 0 /usr/src/redmine \
   && chmod -R g=u /usr/src/redmine
