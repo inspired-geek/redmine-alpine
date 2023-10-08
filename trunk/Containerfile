@@ -32,7 +32,12 @@ RUN apk --no-cache add --virtual .run-deps \
     mariadb-dev \
     sqlite-dev \
   && echo 'gem: --no-document' > /etc/gemrc \
-  && gem i bundler:'>=1.12.0' \
+  && chgrp -R 0 /usr/src/redmine \
+  && chmod -R g=u /usr/src/redmine
+
+USER 1001
+
+RUN gem i bundler:'>=1.12.0' \
   && wget https://github.com/redmine/redmine/archive/refs/heads/master.tar.gz -O redmine.tar.gz \
   && tar zxf redmine.tar.gz --strip-components=1 \
   && rm -rf redmine.tar.gz files/delete.me log/delete.me test\
@@ -43,13 +48,13 @@ RUN apk --no-cache add --virtual .run-deps \
   && echo 'gem "tzinfo-data"' >> Gemfile.local \
   && bundle config set --local without 'development test' \
   && bundle install \
-  && rm -rf .gem/cache \
-  && apk --purge del .build-deps 
+  && rm -rf .gem/cache
+
+USER root
 
 COPY ../config/* ./config/
 
-RUN chgrp -R 0 /usr/src/redmine \
-  && chmod -R g=u /usr/src/redmine
+RUN apk --purge del .build-deps 
 
 USER 1001
 VOLUME /usr/src/redmine/files /usr/src/redmine/publib/plugin_assets /usr/src/redmine/plugins /usr/src/redmine/public/themes
