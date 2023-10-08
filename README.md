@@ -1,20 +1,17 @@
-Extra small Redmine container based on Alpine linux
-=======================================
+# Extra small Redmine container based on Alpine linux
 
-[![Docker Repository on Quay](https://quay.io/repository/inspired_geek/redmine-alpine/status "Docker Repository on Quay")](https://quay.io/repository/inspired_geek/redmine-alpine) [![](https://images.microbadger.com/badges/image/inspiredgeek/redmine-alpine.svg)](http://microbadger.com/images/inspiredgeek/redmine-alpine "Get your own image badge on microbadger.com")
+![Docker Image Size (tag)](https://ghcr-badge.deta.dev/inspired-geek/redmine-alpine/size?tag=5.0)
 
 It's been inspired by official [Redmine](https://hub.docker.com/_/redmine/) image but optimized in size.
 Image has mysql and sqlite3 support built in.
-Also there is image with fast web server Unicorn for production usage.
+Also it fast web server Unicorn built-in for production usage.
 
-If you need another database or web server or even some scm support feel free to inherit these images from [Docker hub](https://hub.docker.com/r/inspiredgeek/redmine-alpine/).
+If you need another database or web server or even some scm support feel free to inherit these images from [Github](https://github.com/inspired-geek/redmine-alpine/pkgs/container/redmine-alpine).
 
-### Usage
+## Usage
 
 Test run:
 
-    docker run -d -p 3000:3000 inspiredgeek/redmine-alpine
-
-More close to production run with unicorn:
-
-    docker run -d -p 8080:8080 -v redmine-files:/usr/src/redmine/files inspiredgeek/redmine-alpine:unicorn
+```(shell)
+    docker run -d -p 8080:8080 ghcr.io/inspired-geek/redmine-alpine:5.0
+```

@@ -1,0 +1,42 @@
+name: Build Images using Containerfile
+on: [push]
+env:
+  IMAGE_NAME: redmine-alpine
+  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+  REGISTRY_USER: ${{ github.actor }}
+  REGISTRY_PASSWORD: ${{ github.token }}
+jobs:
+  build:
+    strategy:
+      matrix: 
+        version: ["3.4", "4.0", "4.1", "4.2", "5.0", "trunk"]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Build image
+        id: build_image
+        uses: redhat-actions/buildah-build@v2.12
+        with:
+          image: ${{ env.IMAGE_NAME }}
+          tags: ${{ matrix.version }}
+          containerfiles: |
+            ./${{ matrix.version }}/Containerfile
+          oci: true
+          extra-args: |
+            --squash
+      - name: Push image to GHCR
+        uses: redhat-actions/push-to-registry@v2.7
+        id: push
+        with:
+          image: ${{ env.IMAGE_NAME }}
+          tags: ${{ matrix.version }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+          extra-args: |
+            --disable-content-trust
+
+      - name: Echo outputs
+        run: |
+          echo "${{ toJSON(steps.push.outputs) }}"
