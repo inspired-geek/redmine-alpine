@@ -21,7 +21,7 @@ jobs:
           image: ${{ env.IMAGE_NAME }}
           tags: ${{ matrix.version }}
           containerfiles: |
-            .${{ matrix.version }}/Containerfile
+            ./${{ matrix.version }}/Containerfile
           oci: true
           extra-args: |
             --squash
