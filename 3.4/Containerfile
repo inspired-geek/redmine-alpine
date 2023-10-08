@@ -20,6 +20,7 @@ ENV RAILS_ENV=production \
 
 WORKDIR /usr/src/redmine
 
+USER root
 RUN apk --no-cache add --virtual .run-deps \
     mariadb-client-libs \
     sqlite-libs \
@@ -36,7 +37,12 @@ RUN apk --no-cache add --virtual .run-deps \
     curl \
     shared-mime-info \
   && echo 'gem: --no-document' > /etc/gemrc \
-  && gem i bundler:1.16.6 \
+  && chgrp -R 0 /usr/src/redmine \
+  && chmod -R g=u /usr/src/redmine
+
+USER 1001
+
+RUN gem i bundler:1.16.6 \
   && curl -k https://redmine.org/releases/redmine-$REDMINE_VERSION.tar.gz -o redmine.tar.gz \
   && tar zxf redmine.tar.gz --strip-components=1 \
   && rm -rf redmine.tar.gz files/delete.me log/delete.me test \
@@ -49,13 +55,13 @@ RUN apk --no-cache add --virtual .run-deps \
   && echo 'gem "loofah", "2.19.1"' >> Gemfile.local \
   && echo 'gem "tzinfo-data"' >> Gemfile.local \
   && bundle install --without development test \
-  && rm -rf .gem/cache \
-  && apk --purge del .build-deps 
+  && rm -rf .gem/cache
+
+USER root
 
 COPY ../config/* ./config/
 
-RUN chgrp -R 0 /usr/src/redmine \
-  && chmod -R g=u /usr/src/redmine
+RUN apk --purge del .build-deps 
 
 USER 1001
 VOLUME /usr/src/redmine/files /usr/src/redmine/publib/plugin_assets /usr/src/redmine/plugins /usr/src/redmine/public/themes
