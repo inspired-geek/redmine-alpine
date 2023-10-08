@@ -9,7 +9,7 @@ jobs:
   build:
     strategy:
       matrix: 
-        version: [3.4, 4.0, 4.1, 4.2, 5.0, trunk]
+        version: ["3.4", "4.0", "4.1", "4.2", "5.0", "trunk"]
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
