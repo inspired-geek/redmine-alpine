@@ -1,7 +1,7 @@
 version: '3'
 services:
   redmine:
-    image: inspiredgeek/redmine-alpine:unicorn
+    image: inspiredgeek/redmine-alpine:5.0
     ports:
       - "8080:8080"
     environment:
