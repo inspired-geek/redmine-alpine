@@ -104,7 +104,7 @@ for expected in \
   "--rewrite-timestamp" \
   "SOURCE_BASE=docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b" \
   "BUILDER_BASE=docker.io/library/ruby:3.2-alpine3.23@sha256:d206c25708a44df6a7ce22213ee5da9fc0a9f7b31ce884429ba758db48abdc62" \
-  "RUNTIME_BASE=docker.io/library/ruby:3.2-alpine3.23@sha256:d206c25708a44df6a7ce22213ee5da9fc0a9f7b31ce884429ba758db48abdc62" \
+  "RUNTIME_BASE=docker.io/library/alpine:3.23@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40" \
   "SOURCE_SHA256=1a3d1039e474e787cebf223da148bf28373e4bca262197a53cfa6139640ebe5f" \
   "EXPECTED_REDMINE_VERSION=5.1.13" \
   "EXPECTED_RUBY_VERSION=3.2.11" \
@@ -137,6 +137,7 @@ env PATH="$tmp/bin:$PATH" IMAGE_BUILD_DIRECT_PODMAN=1 \
   --revision 0123456789abcdef0123456789abcdef01234567
 connector_build=$(grep '^build ' "$connector_log")
 for expected in \
+  'RUNTIME_BASE=docker.io/library/alpine:3.14@sha256:0f2d5c38dd7a4f4f733e688e3a6733cb5ab1ac6e3cb4603a5dd564e5bfb80eed' \
   'MARIADB_CONNECTOR_VERSION=3.3.18' \
   'MARIADB_CONNECTOR_SOURCE_URL=https://codeload.github.com/mariadb-corporation/mariadb-connector-c/tar.gz/9e2b0370de0076461ebae71a06acfb7a9364395b' \
   'MARIADB_CONNECTOR_SOURCE_SHA256=c9bb36de53cab97dbec2f3fc47219f9ddb8d7068e532c6abd9b18f8e5d3850fe'
@@ -154,6 +155,9 @@ env PATH="$tmp/bin:$PATH" IMAGE_BUILD_DIRECT_PODMAN=1 \
   --output-dir "$tmp/modern-output" \
   --revision 0123456789abcdef0123456789abcdef01234567
 modern_build=$(grep '^build ' "$modern_log")
+printf '%s\n' "$modern_build" | grep -F \
+  'RUNTIME_BASE=docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b' \
+  >/dev/null || fail "modern runtime did not use its pinned plain Alpine base"
 printf '%s\n' "$modern_build" | grep -F 'FORCE_RUBY_PLATFORM=false' >/dev/null ||
   fail "native musl profile did not disable forced Ruby-platform gems"
 modern_gemfile=$(
@@ -219,6 +223,11 @@ grep -F 'FROM ${BUILDER_BASE} AS builder' "$containerfile" >/dev/null ||
   fail "builder stage missing"
 grep -F 'FROM ${RUNTIME_BASE} AS runtime' "$containerfile" >/dev/null ||
   fail "runtime stage missing"
+grep -F 'COPY --from=builder /usr/local/ /usr/local/' "$containerfile" >/dev/null ||
+  fail "complete built Ruby runtime must be copied into the final image"
+grep -F -- '--recursive /usr/local /opt/mariadb-connector-runtime' \
+  "$containerfile" >/dev/null ||
+  fail "runtime dependency closure must include the copied Ruby runtime"
 grep -F 'PUMA_DISABLE_SSL=1' "$containerfile" >/dev/null ||
   fail "Puma native TLS must be disabled for the shared HTTP runtime contract"
 grep -F 'https://rubygems.org/downloads/bundler-${BUNDLER_VERSION}.gem' \
@@ -299,9 +308,9 @@ grep -F 'imagemagick6_identify=$(command -v identify-6)' "$containerfile" >/dev/
 grep -F 'rm -f "$GEM_HOME"/gems/rbpdf-font-*/lib/fonts/ttf2ufm/ttf2ufm' \
   "$containerfile" >/dev/null ||
   fail "non-musl rbpdf-font helper was not removed before dependency scanning"
-grep -F '/run/redmine-tools/runtime-cleanup "$GEM_HOME" /usr/src/redmine' \
+grep -F '/run/redmine-tools/runtime-cleanup "$GEM_HOME" /usr/src/redmine /usr/local' \
   "$containerfile" >/dev/null ||
-  fail "mounted runtime cleanup was not executed"
+  fail "mounted runtime cleanup did not include the copied Ruby runtime"
 grep -F '/run/redmine-tools/apk-add --virtual .verify-deps pax-utils' \
   "$containerfile" >/dev/null ||
   fail "ELF verifier dependency was not installed ephemerally"
@@ -312,9 +321,9 @@ grep -F '/run/redmine-tools/runtime-verify contract' "$containerfile" >/dev/null
 if grep -F -- '--chown=1001:0' "$containerfile" >/dev/null; then
   fail "runtime application code must remain root-owned"
 fi
-grep -F 'chmod -R go-w /usr/local/bundle /usr/src/redmine' \
+grep -F 'chmod -R go-w /usr/local /usr/src/redmine' \
   "$containerfile" >/dev/null ||
-  fail "runtime application and bundle must reject group/world writes"
+  fail "runtime application and copied Ruby tree must reject group/world writes"
 last_run=$(grep -n '^RUN ' "$containerfile" | tail -1 | cut -d: -f1)
 label_line=$(grep -n '^LABEL org.opencontainers.image.authors=' "$containerfile" |
   cut -d: -f1)

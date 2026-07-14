@@ -9,7 +9,9 @@ one mandatory CI matrix, Puma, numeric UID 1001, port 8080, SQLite and
 MySQL/MariaDB adapters, the same functional smoke tests, and the same verified
 publication path. Compatibility profiles keep the Ruby and Alpine base needed
 by their Redmine release; profiles that support the current base use Alpine
-3.24.
+3.24. Profiles built from an official Ruby image copy only the cleaned,
+stripped Ruby runtime into a pinned plain-Alpine final stage; package-Ruby
+profiles use the same build graph without carrying a compiler toolchain.
 
 ## Image matrix
 

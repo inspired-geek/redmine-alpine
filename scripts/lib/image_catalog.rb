@@ -276,7 +276,9 @@ module ImageCatalog
       validate_pinned_image!(builder_base, "trunk resolution builder_base")
       validate_pinned_image!(runtime_base, "trunk resolution runtime_base")
       expected_prefix = "#{profile.dig('base', 'reference')}@sha256:"
-      unless builder_base == runtime_base && builder_base.start_with?(expected_prefix)
+      expected_runtime = profile.dig("base", "runtime_reference")
+      unless builder_base.start_with?(expected_prefix) &&
+             runtime_base == expected_runtime
         semantic_error!("trunk resolution bases contradict the catalog")
       end
 
@@ -401,6 +403,7 @@ module ImageCatalog
           semantic_error!("trunk Ruby install mode must be base_image")
         end
         validate_base_image_ruby_version!(profile, reference)
+        validate_runtime_base!(profile, reference)
         return
       end
 
@@ -436,6 +439,7 @@ module ImageCatalog
         semantic_error!("#{id}: Ruby install mode contradicts base image")
       end
       validate_base_image_ruby_version!(profile, reference) if expected_mode == "base_image"
+      validate_runtime_base!(profile, reference)
     end
 
     def validate_base_image_ruby_version!(profile, reference)
@@ -444,6 +448,33 @@ module ImageCatalog
       version = profile.dig("ruby", "version")
       unless match && version.start_with?("#{match[1]}.")
         semantic_error!("#{profile.fetch('id')}: Ruby version contradicts base image")
+      end
+    end
+
+    def validate_runtime_base!(profile, builder_reference)
+      id = profile.fetch("id")
+      mode = profile.dig("ruby", "install_mode")
+      runtime_reference = profile.dig("base", "runtime_reference")
+
+      if mode == "alpine_package"
+        if runtime_reference && runtime_reference != builder_reference
+          semantic_error!("#{id}: package Ruby runtime base must equal its builder base")
+        end
+        return
+      end
+
+      unless runtime_reference
+        semantic_error!("#{id}: base-image Ruby requires a pinned plain Alpine runtime")
+      end
+      validate_pinned_image!(runtime_reference, "#{id}: runtime base")
+
+      builder_image = builder_reference.split("@", 2).first
+      runtime_image = runtime_reference.split("@", 2).first
+      builder_alpine = /alpine([0-9]+\.[0-9]+)/.match(builder_image)
+      runtime_alpine = %r{(?:\A|/)alpine:([0-9]+\.[0-9]+)\z}.match(runtime_image)
+      unless builder_alpine && runtime_alpine &&
+             builder_alpine[1] == runtime_alpine[1]
+        semantic_error!("#{id}: runtime Alpine series contradicts builder base")
       end
     end
 

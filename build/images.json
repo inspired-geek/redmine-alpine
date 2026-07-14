@@ -745,7 +745,8 @@
         "ref": "refs/heads/master"
       },
       "base": {
-        "reference": "ruby:3.4-alpine3.24"
+        "reference": "ruby:3.4-alpine3.24",
+        "runtime_reference": "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
       },
       "ruby": {
         "version": "3.4.10",
@@ -867,7 +868,8 @@
         "source_date_epoch": 1781551502
       },
       "base": {
-        "reference": "ruby:3.2-alpine3.23@sha256:d206c25708a44df6a7ce22213ee5da9fc0a9f7b31ce884429ba758db48abdc62"
+        "reference": "ruby:3.2-alpine3.23@sha256:d206c25708a44df6a7ce22213ee5da9fc0a9f7b31ce884429ba758db48abdc62",
+        "runtime_reference": "alpine:3.23@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40"
       },
       "ruby": {
         "version": "3.2.11",
@@ -991,7 +993,8 @@
         "source_date_epoch": 1781551504
       },
       "base": {
-        "reference": "ruby:3.3-alpine3.24@sha256:940f1f8ba78c93b303eb2a632b249792cf60435517da260f3a1b9c8b8f1e7dfe"
+        "reference": "ruby:3.3-alpine3.24@sha256:940f1f8ba78c93b303eb2a632b249792cf60435517da260f3a1b9c8b8f1e7dfe",
+        "runtime_reference": "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
       },
       "ruby": {
         "version": "3.3.11",
@@ -1116,7 +1119,8 @@
         "source_date_epoch": 1781551506
       },
       "base": {
-        "reference": "ruby:3.4-alpine3.24@sha256:c5a5064d190055633011c03aa800170cc36945ff3afb5f6c915329f92d6f1e00"
+        "reference": "ruby:3.4-alpine3.24@sha256:c5a5064d190055633011c03aa800170cc36945ff3afb5f6c915329f92d6f1e00",
+        "runtime_reference": "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
       },
       "ruby": {
         "version": "3.4.10",
@@ -1240,7 +1244,8 @@
         "source_date_epoch": 1782853202
       },
       "base": {
-        "reference": "ruby:3.4-alpine3.24@sha256:c5a5064d190055633011c03aa800170cc36945ff3afb5f6c915329f92d6f1e00"
+        "reference": "ruby:3.4-alpine3.24@sha256:c5a5064d190055633011c03aa800170cc36945ff3afb5f6c915329f92d6f1e00",
+        "runtime_reference": "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
       },
       "ruby": {
         "version": "3.4.10",

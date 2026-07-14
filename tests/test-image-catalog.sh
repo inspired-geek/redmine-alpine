@@ -80,6 +80,14 @@ BASES = {
   "7.0" => "ruby:3.4-alpine3.24@sha256:c5a5064d190055633011c03aa800170cc36945ff3afb5f6c915329f92d6f1e00"
 }.freeze
 
+RUNTIME_BASES = {
+  "trunk" => "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
+  "5.1" => "alpine:3.23@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40",
+  "6.0" => "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
+  "6.1" => "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
+  "7.0" => "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
+}.freeze
+
 RUBY_VERSIONS = {
   "3.4" => "2.4.10", "4.0" => "2.6.8", "4.1" => "2.6.8",
   "4.2" => "2.7.8", "5.0" => "3.1.5", "trunk" => "3.4.10",
@@ -513,7 +521,11 @@ profiles.each do |profile|
   assert_equal(expected_profile_keys.sort, profile.keys.sort, "#{id}: closed profile keys")
   assert_equal(["linux/amd64"], profile.fetch("platforms"), "#{id}: platforms")
   assert_equal(version, profile.fetch("redmine_version"), "#{id}: Redmine version")
-  assert_equal({"reference" => BASES.fetch(id)}, profile.fetch("base"), "#{id}: base")
+  expected_base = {"reference" => BASES.fetch(id)}
+  if RUNTIME_BASES.key?(id)
+    expected_base["runtime_reference"] = RUNTIME_BASES.fetch(id)
+  end
+  assert_equal(expected_base, profile.fetch("base"), "#{id}: base")
   assert_equal(RUBY_VERSIONS.fetch(id), profile.dig("ruby", "version"), "#{id}: Ruby version")
   expected_mode = %w[3.4 4.0 4.1 4.2 5.0].include?(id) ? "alpine_package" : "base_image"
   assert_equal(expected_mode, profile.dig("ruby", "install_mode"), "#{id}: Ruby mode")
@@ -659,6 +671,8 @@ assert(schema.dig("$defs", "profile", "required").include?("force_ruby_platform"
        "profile schema must require force_ruby_platform")
 assert(schema.dig("$defs", "profile", "required").include?("size_budgets"),
        "profile schema must require measured size budgets")
+assert(schema.dig("$defs", "base", "properties").key?("runtime_reference"),
+       "base schema must support a pinned plain-Alpine runtime")
 assert_equal(true,
              schema.dig("$defs", "compatibility_gem", "properties",
                         "force_ruby_platform", "const"),

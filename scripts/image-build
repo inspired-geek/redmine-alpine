@@ -111,6 +111,12 @@ source_base=$(
 )
 source_base=$(qualify_image_reference "$source_base")
 profile_base=$(qualify_image_reference "$(json_value base.reference)")
+runtime_base=$(json_optional_value base.runtime_reference)
+if [ -z "$runtime_base" ]; then
+  runtime_base=$profile_base
+else
+  runtime_base=$(qualify_image_reference "$runtime_base")
+fi
 source_url=$(json_value source.url)
 source_sha256=$(json_value source.sha256)
 source_date_epoch=$(json_value source.source_date_epoch)
@@ -208,7 +214,7 @@ set -- build \
 for argument in \
   "SOURCE_BASE=$source_base" \
   "BUILDER_BASE=$profile_base" \
-  "RUNTIME_BASE=$profile_base" \
+  "RUNTIME_BASE=$runtime_base" \
   "SOURCE_URL=$source_url" \
   "SOURCE_SHA256=$source_sha256" \
   "EXPECTED_REDMINE_VERSION=$redmine_version" \

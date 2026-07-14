@@ -207,6 +207,25 @@ rm -f \
   "$bundle/gems/example-1.0/lib/allowed.o" \
   "$bundle/gems/second-1.0/lib/forbidden.o"
 
+mkdir -p "$fixture/usr/local/include"
+set +e
+run_verify "$verify" contract >"$tmp/output" 2>"$tmp/error"
+status=$?
+set -e
+[ "$status" -ne 0 ] || fail "copied Ruby development headers were accepted"
+rm -rf "$fixture/usr/local/include"
+
+default_gems=$fixture/usr/local/lib/ruby/gems/3.2.0
+mkdir -p "$default_gems/cache" "$default_gems/gems/default-1.0/ext"
+: >"$default_gems/cache/default-1.0.gem"
+: >"$default_gems/gems/default-1.0/ext/native.o"
+set +e
+run_verify "$verify" contract >"$tmp/output" 2>"$tmp/error"
+status=$?
+set -e
+[ "$status" -ne 0 ] || fail "default gem build residue was accepted"
+rm -rf "$default_gems"
+
 set +e
 RUNTIME_VERIFY_INSTALLED_PACKAGE=gcc run_verify "$verify" contract \
   >"$tmp/output" 2>"$tmp/error"

@@ -125,8 +125,10 @@ ruby -rjson -rdigest -rtime -e '
     Time.parse("2026-07-01T12:34:56Z").to_i
   expected_base =
     "ruby:3.4-alpine3.24@sha256:" + ("a" * 64)
+  expected_runtime =
+    "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
   abort "builder base" unless value.fetch("builder_base") == expected_base
-  abort "runtime base" unless value.fetch("runtime_base") == expected_base
+  abort "runtime base" unless value.fetch("runtime_base") == expected_runtime
 ' "$resolution" 'resolved trunk archive
 '
 
@@ -161,6 +163,8 @@ printf '%s' "$first" | ruby -rjson -e '
   abort "resolved base" unless profile.dig("base", "reference").match?(
     /@sha256:[0-9a-f]{64}\z/
   )
+  abort "resolved runtime base" unless profile.dig("base", "runtime_reference") ==
+    "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
 '
 
 args=$("$catalog" build-args trunk --resolution "$resolution")

@@ -213,6 +213,9 @@ for residue in \
   "$app/doc" \
   "$app/.bundle/cache" \
   "$app/tmp/cache" \
+  "$(root_path /usr/local/include)" \
+  "$(root_path /usr/local/lib/pkgconfig)" \
+  "$(root_path /usr/local/share/man)" \
   "$(root_path /root/.bundle/cache)" \
   "$(root_path /root/.cargo/registry)" \
   "$(root_path /root/.cargo/git)" \
@@ -243,6 +246,49 @@ find "$bundle" -type f \
 while IFS= read -r residue; do
   is_cleanup_exception "$residue" ||
     fail "forbidden compiler output: $residue"
+done
+
+default_gems_root=$(root_path /usr/local/lib/ruby/gems)
+for default_gems in "$default_gems_root"/*; do
+  [ -d "$default_gems/gems" ] || continue
+  for residue in \
+    "$default_gems/cache" \
+    "$default_gems/doc" \
+    "$default_gems/build_info"
+  do
+    if [ -e "$residue" ] && ! is_cleanup_exception "$residue"; then
+      fail "forbidden default gem build residue: $residue"
+    fi
+  done
+
+  for gem in "$default_gems"/gems/*; do
+    [ -d "$gem" ] || continue
+    for name in \
+      .bundle .github benchmark benchmarks coverage doc docs example examples \
+      ext features pkg ports spec test tests
+    do
+      residue=$gem/$name
+      if [ -e "$residue" ] && ! is_cleanup_exception "$residue"; then
+        fail "forbidden default gem build residue: $residue"
+      fi
+    done
+  done
+
+  find "$default_gems" -type f \
+    \( -name '*.a' -o -name '*.la' -o -name '*.lo' -o -name '*.o' \
+       -o -name Makefile -o -name gem_make.out -o -name mkmf.log \) \
+    -print |
+  while IFS= read -r residue; do
+    is_cleanup_exception "$residue" ||
+      fail "forbidden default gem compiler output: $residue"
+  done
+done
+
+runtime_lib=$(root_path /usr/local/lib)
+for residue in "$runtime_lib"/*.a "$runtime_lib"/*.la; do
+  [ -e "$residue" ] || continue
+  is_cleanup_exception "$residue" ||
+    fail "forbidden Ruby runtime compiler output: $residue"
 done
 
 apk=${APK:-apk}

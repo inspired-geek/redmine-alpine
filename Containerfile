@@ -180,13 +180,23 @@ RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-too
   cat /tmp/redmine-alpine-production.rb >> config/environments/production.rb; \
   rm -f /tmp/redmine-alpine-production.rb; \
   RUNTIME_CLEANUP_KEEP_PATHS="$RUNTIME_CLEANUP_KEEP_PATHS" \
-    /run/redmine-tools/runtime-cleanup "$GEM_HOME" /usr/src/redmine; \
+    /run/redmine-tools/runtime-cleanup "$GEM_HOME" /usr/src/redmine /usr/local; \
+  scanelf \
+    --nobanner \
+    --format '%F' \
+    --recursive /usr/local \
+    | while IFS= read -r target; do \
+        case $target in \
+          "$GEM_HOME"/*) continue ;; \
+        esac; \
+        strip --strip-unneeded "$target"; \
+      done; \
   rm -f "$GEM_HOME"/gems/rbpdf-font-*/lib/fonts/ttf2ufm/ttf2ufm; \
   scanelf \
     --needed \
     --nobanner \
     --format '%n#p' \
-    --recursive /usr/local/bundle /opt/mariadb-connector-runtime \
+    --recursive /usr/local /opt/mariadb-connector-runtime \
     | tr ',' '\n' \
     | sort -u \
     | awk \
@@ -195,9 +205,9 @@ RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-too
        system("[ -e /opt/mariadb-connector-runtime/lib/mariadb/" $1 " ]") == 0 { next } \
        { print "so:" $1 }' \
     > /tmp/runtime-deps; \
-  find /opt/mariadb-connector-runtime /usr/local/bundle /usr/src/redmine -exec \
+  find /opt/mariadb-connector-runtime /usr/local /usr/src/redmine -exec \
     touch -h -d "@$SOURCE_DATE_EPOCH" {} +; \
-  chmod -R go-w /usr/local/bundle /usr/src/redmine
+  chmod -R go-w /usr/local /usr/src/redmine
 
 FROM ${RUNTIME_BASE} AS runtime
 
@@ -214,16 +224,19 @@ ARG RUNTIME_PACKAGES
 ARG RUNTIME_PATHS
 ARG RUNTIME_REQUIRES
 
-ENV BUNDLE_SILENCE_ROOT_WARNING=1 \
+ENV BUNDLE_APP_CONFIG=/usr/local/bundle \
+  BUNDLE_SILENCE_ROOT_WARNING=1 \
   BUNDLE_WITHOUT=development:test \
   DB_ADAPTER=sqlite3 \
   GEM_HOME=/usr/local/bundle \
   GEM_PATH=/usr/local/bundle \
   HOME=/home/redmine \
+  LANG=C.UTF-8 \
   LD_LIBRARY_PATH=/opt/mariadb-connector/lib/mariadb \
   PATH=/usr/local/bundle/bin:${PATH} \
   RAILS_ENV=production \
   RAILS_LOG_TO_STDOUT=true \
+  RUBY_VERSION=$EXPECTED_RUBY_VERSION \
   RUBYOPT=-rlogger \
   REDMINE_VERSION=$EXPECTED_REDMINE_VERSION
 
@@ -254,7 +267,7 @@ RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-too
   fi; \
   rm -f /tmp/runtime-deps
 
-COPY --from=builder /usr/local/bundle/ /usr/local/bundle/
+COPY --from=builder /usr/local/ /usr/local/
 COPY --from=builder /usr/src/redmine/ /usr/src/redmine/
 COPY config/database.yml config/secrets.yml config/puma.rb \
   /usr/src/redmine/config/
@@ -262,7 +275,7 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 
 RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
   set -eux; \
-  chmod go-w /usr/local/bundle /usr/src/redmine; \
+  chmod go-w /usr/local /usr/src/redmine; \
   chown -R 1001:0 \
     "$HOME" files log plugins public/assets public/plugin_assets \
     public/themes sqlite tmp; \

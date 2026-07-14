@@ -17,6 +17,9 @@ bundle=$tmp/bundle
 app=$tmp/app
 home=$tmp/home
 cargo=$tmp/cargo
+runtime=$tmp/runtime
+default_gems=$runtime/lib/ruby/gems/3.4.0
+default_gem=$default_gems/gems/default-example-1.0
 gem=$bundle/gems/example-1.0
 ruby_series=$(ruby -rrbconfig -e \
   'print RbConfig::CONFIG.fetch("ruby_version").split(".").first(2).join(".")')
@@ -54,7 +57,16 @@ mkdir -p \
   "$home/.bundle/cache" \
   "$cargo/registry" \
   "$cargo/git" \
-  "$cargo/target"
+  "$cargo/target" \
+  "$default_gems/cache" \
+  "$default_gems/doc" \
+  "$default_gems/build_info" \
+  "$default_gem/lib" \
+  "$default_gem/ext" \
+  "$default_gem/test" \
+  "$runtime/include/ruby" \
+  "$runtime/lib/pkgconfig" \
+  "$runtime/share/man/man1"
 
 for file in \
   "$bundle/cache/example.gem" \
@@ -82,7 +94,16 @@ for file in \
   "$home/.bundle/cache/index" \
   "$cargo/registry/index" \
   "$cargo/git/checkout" \
-  "$cargo/target/object.o"
+  "$cargo/target/object.o" \
+  "$default_gems/cache/default-example.gem" \
+  "$default_gems/doc/index.html" \
+  "$default_gems/build_info/default-example.info" \
+  "$default_gem/lib/runtime.rb" \
+  "$default_gem/ext/native.o" \
+  "$default_gem/test/runtime_test.rb" \
+  "$runtime/include/ruby/ruby.h" \
+  "$runtime/lib/pkgconfig/ruby.pc" \
+  "$runtime/share/man/man1/ruby.1"
 do
   : >"$file"
 done
@@ -103,7 +124,7 @@ chmod +x "$fake_bin/strip"
 
 env HOME="$home" CARGO_HOME="$cargo" PATH="$fake_bin:$PATH" \
   RUNTIME_CLEANUP_KEEP_PATHS="$gem/examples" \
-  "$cleanup" "$bundle" "$app"
+  "$cleanup" "$bundle" "$app" "$runtime"
 
 for retained in \
   "$bundle/extensions/ruby/example/example.so" \
@@ -111,6 +132,7 @@ for retained in \
   "$gem/examples/keep.rb" \
   "$multi_abi_gem/lib/native/$ruby_series/native.so" \
   "$single_abi_gem/lib/native/$other_series/native.so" \
+  "$default_gem/lib/runtime.rb" \
   "$app/extra/mail_handler.rb" \
   "$app/public/application.css"
 do
@@ -141,7 +163,15 @@ for removed in \
   "$home/.bundle/cache" \
   "$cargo/registry" \
   "$cargo/git" \
-  "$cargo/target"
+  "$cargo/target" \
+  "$default_gems/cache" \
+  "$default_gems/doc" \
+  "$default_gems/build_info" \
+  "$default_gem/ext" \
+  "$default_gem/test" \
+  "$runtime/include" \
+  "$runtime/lib/pkgconfig" \
+  "$runtime/share/man"
 do
   [ ! -e "$removed" ] || fail "build residue survived: $removed"
 done
