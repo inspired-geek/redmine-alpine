@@ -104,6 +104,16 @@ assert_contains Containerfile 'ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]'
 assert_contains Containerfile 'CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]'
 assert_not_contains Containerfile unicorn
 
+hardening_count=$(grep -Fc 'chmod -R go-w /usr/local/bundle /usr/src/redmine' Containerfile)
+[ "$hardening_count" -eq 1 ] ||
+  fail "expected one application permission hardening command, found $hardening_count"
+hardening_line=$(grep -nF 'chmod -R go-w /usr/local/bundle /usr/src/redmine' Containerfile |
+  cut -d: -f1)
+runtime_line=$(grep -nF 'FROM ${RUNTIME_BASE} AS runtime' Containerfile | cut -d: -f1)
+[ "$hardening_line" -lt "$runtime_line" ] ||
+  fail 'application permissions must be hardened before the runtime COPY layer'
+assert_contains Containerfile 'chmod go-w /usr/local/bundle /usr/src/redmine;'
+
 assert_contains config/database.yml 'RAILS_MAX_THREADS'
 assert_contains config/database.yml '/usr/src/redmine/sqlite/redmine.db'
 assert_contains config/database.yml 'utf8mb4'

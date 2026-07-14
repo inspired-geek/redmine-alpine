@@ -30,7 +30,7 @@ for pattern in \
   'profile.fetch("puma_version")' \
   'profile.dig("runtime_checks", "requires")' \
   'test ! -e Gemfile.local' \
-  'bundle check' \
+  'BUNDLE_FROZEN=true bundle check' \
   'dig("tool_policy", "test_images", "mariadb")' \
   'current_database must be a non-empty String' \
   'Mysql2::Client.info.fetch(:header_version)' \

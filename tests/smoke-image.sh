@@ -215,7 +215,7 @@ configured_entrypoint=$(
 "$engine" run --rm --entrypoint sh "$image" -c '
   set -eu
   test ! -e Gemfile.local
-  bundle check
+  BUNDLE_FROZEN=true bundle check
 ' || fail "runtime Gemfile is not canonical or disagrees with Gemfile.lock"
 
 if [ -n "$expected_arch" ]; then

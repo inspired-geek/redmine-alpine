@@ -196,7 +196,8 @@ RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-too
        { print "so:" $1 }' \
     > /tmp/runtime-deps; \
   find /opt/mariadb-connector-runtime /usr/local/bundle /usr/src/redmine -exec \
-    touch -h -d "@$SOURCE_DATE_EPOCH" {} +
+    touch -h -d "@$SOURCE_DATE_EPOCH" {} +; \
+  chmod -R go-w /usr/local/bundle /usr/src/redmine
 
 FROM ${RUNTIME_BASE} AS runtime
 
@@ -261,7 +262,7 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 
 RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
   set -eux; \
-  chmod -R go-w /usr/local/bundle /usr/src/redmine; \
+  chmod go-w /usr/local/bundle /usr/src/redmine; \
   chown -R 1001:0 \
     "$HOME" files log plugins public/assets public/plugin_assets \
     public/themes sqlite tmp; \
