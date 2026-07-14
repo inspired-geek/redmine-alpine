@@ -1,0 +1,7 @@
+{
+  "description": "immutable tags match the release version",
+  "operations": [
+    {"op": "replace", "path": "/profiles/6/tags/immutable/0", "value": "5.1.12"}
+  ],
+  "expected": "immutable tags contradict Redmine version"
+}

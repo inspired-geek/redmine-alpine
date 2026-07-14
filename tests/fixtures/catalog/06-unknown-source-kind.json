@@ -1,0 +1,7 @@
+{
+  "description": "source kinds are enumerated",
+  "operations": [
+    {"op": "replace", "path": "/profiles/0/source/kind", "value": "local_tree"}
+  ],
+  "expected": "is not in enum"
+}

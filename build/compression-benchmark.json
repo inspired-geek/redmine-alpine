@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-07-13T07:46:00Z",
+  "platform": "linux/arm64",
+  "target_image_platform": "linux/amd64",
+  "toolchain": {
+    "image": "quay.io/podman/stable@sha256:766815d247ce0edfd8774770371d293728b0b500a219f35de98b408100f5d412",
+    "podman": "5.8.2",
+    "containers_image": "5.39.2",
+    "klauspost_compress": "1.18.0"
+  },
+  "policy": {
+    "gzip_level": 9,
+    "zstd_candidates": [
+      3,
+      7,
+      10
+    ],
+    "zstd_classes": {
+      "3": "default",
+      "7": "better",
+      "10": "best"
+    },
+    "runs": 3,
+    "selected_zstd_level": 10,
+    "selection_reason": "Level 10 is the smallest reproducible zstd:chunked variant. In klauspost/compress all numeric levels at or above 10 map to the same best-compression class."
+  },
+  "profiles": {
+    "3.4": {
+      "source_revision": "19eb43b7dc1b51f7ae2ca22f88218a6b0864fb46",
+      "rootfs_bytes": 192621568,
+      "gzip_layer_bytes": 70060460,
+      "results": [
+        {
+          "level": 3,
+          "layer_bytes": 77338553,
+          "archive_bytes": 77378048,
+          "seconds": [
+            4.991752,
+            5.002520,
+            5.494412
+          ]
+        },
+        {
+          "level": 7,
+          "layer_bytes": 76257952,
+          "archive_bytes": 76298240,
+          "seconds": [
+            5.236484,
+            5.241912,
+            5.240226
+          ]
+        },
+        {
+          "level": 10,
+          "layer_bytes": 73181318,
+          "archive_bytes": 73221120,
+          "seconds": [
+            7.749101,
+            7.742904,
+            7.751613
+          ]
+        }
+      ]
+    },
+    "5.1": {
+      "source_revision": "c256cd582688dfd5fc872d59390f7c32f5895f91",
+      "rootfs_bytes": 271834112,
+      "gzip_layer_bytes": 116544069,
+      "results": [
+        {
+          "level": 3,
+          "layer_bytes": 123587034,
+          "archive_bytes": 123635200,
+          "seconds": [
+            5.759995,
+            5.990432,
+            5.994074
+          ]
+        },
+        {
+          "level": 7,
+          "layer_bytes": 122161837,
+          "archive_bytes": 122210304,
+          "seconds": [
+            6.249813,
+            5.999638,
+            6.012930
+          ]
+        },
+        {
+          "level": 10,
+          "layer_bytes": 118218661,
+          "archive_bytes": 118266368,
+          "seconds": [
+            9.229809,
+            9.239420,
+            9.253515
+          ]
+        }
+      ]
+    }
+  }
+}

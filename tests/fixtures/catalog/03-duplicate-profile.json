@@ -1,0 +1,7 @@
+{
+  "description": "profile identifiers are unique",
+  "operations": [
+    {"op": "copy", "from": "/profiles/0", "path": "/profiles/-"}
+  ],
+  "expected": "duplicate profile id"
+}

@@ -1,0 +1,1345 @@
+{
+  "schema_version": 1,
+  "tool_policy": {
+    "source_base": "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
+    "toolchain": "quay.io/podman/stable@sha256:766815d247ce0edfd8774770371d293728b0b500a219f35de98b408100f5d412",
+    "registry_tool": "quay.io/skopeo/stable:v1.22.2-immutable@sha256:4a16d57b37617a04b3d643079a477a2848efe892dffcdf0ce56df4262b65f810",
+    "test_images": {
+      "mariadb": "mariadb:11.8.8@sha256:efb4959ef2c835cd735dbc388eb9ad6aab0c78dd64febcd51bc17481111890c4",
+      "registry": "registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
+    },
+    "compression": {
+      "gzip_level": 9,
+      "zstd_candidates": [
+        3,
+        7,
+        10
+      ],
+      "benchmark_runs": 3,
+      "selected_zstd_level": 10
+    }
+  },
+  "profiles": [
+    {
+      "id": "3.4",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "redmine_version": "3.4.13",
+      "source": {
+        "kind": "release_archive",
+        "url": "https://www.redmine.org/releases/redmine-3.4.13.tar.gz",
+        "sha256": "bcdf35c88509c7c47e3a50e72d38507c25bebf243aa7844c30ca3f8f1fe6baac",
+        "source_date_epoch": 1576842316
+      },
+      "base": {
+        "reference": "alpine:3.7@sha256:8421d9a84432575381bfabd248f1eb56f3aa21d9d7cd2511583c68c9b7511d10"
+      },
+      "ruby": {
+        "version": "2.4.10",
+        "install_mode": "alpine_package"
+      },
+      "bundler_version": "1.16.6",
+      "bundler_gem_sha256": "07b445ea98d39032d257016a971a0c0947556eea7855ce64970da2a82e098605",
+      "force_ruby_platform": true,
+      "puma_version": "6.6.1",
+      "packages": {
+        "feature": [
+          "ca-certificates",
+          "ghostscript",
+          "imagemagick6",
+          "shared-mime-info",
+          "ttf-dejavu",
+          "tzdata"
+        ],
+        "runtime": [
+          "mariadb-client-libs",
+          "ruby",
+          "sqlite-libs"
+        ],
+        "build": [
+          "build-base",
+          "curl",
+          "imagemagick6-dev",
+          "libxslt-dev",
+          "linux-headers",
+          "mariadb-dev",
+          "pax-utils",
+          "ruby-dev",
+          "sqlite-dev"
+        ]
+      },
+      "compatibility_gems": [
+        {
+          "name": "builder",
+          "requirement": "=3.2.4"
+        },
+        {
+          "name": "sqlite3",
+          "requirement": "~>1.3.12"
+        },
+        {
+          "name": "mysql2",
+          "requirement": "~>0.4.6"
+        },
+        {
+          "name": "json",
+          "requirement": "~>2.6.3"
+        },
+        {
+          "name": "bigdecimal",
+          "requirement": "=1.3.5"
+        },
+        {
+          "name": "loofah",
+          "requirement": "=2.19.1"
+        },
+        {
+          "name": "tzinfo-data",
+          "requirement": null
+        },
+        {
+          "name": "nio4r",
+          "requirement": "=2.7.0"
+        }
+      ],
+      "runtime_checks": {
+        "commands": [
+          "ruby",
+          "bundle",
+          "gs",
+          "convert"
+        ],
+        "requires": [
+          "mysql2",
+          "sqlite3",
+          "puma",
+          "nio4r",
+          "json",
+          "bigdecimal",
+          "loofah",
+          "blankslate"
+        ],
+        "paths": [
+          "/usr/src/redmine",
+          "/usr/local/bundle",
+          "/usr/local/bin/docker-entrypoint",
+          "/usr/src/redmine/config/database.yml",
+          "/usr/src/redmine/config/secrets.yml",
+          "/usr/src/redmine/config/puma.rb",
+          "/usr/src/redmine/files",
+          "/usr/src/redmine/log",
+          "/usr/src/redmine/plugins",
+          "/usr/src/redmine/public/plugin_assets",
+          "/usr/src/redmine/public/themes",
+          "/usr/src/redmine/sqlite",
+          "/usr/src/redmine/tmp",
+          "/usr/src/redmine/tmp/pdf",
+          "/usr/src/redmine/tmp/pids"
+        ],
+        "cleanup_keep_paths": []
+      },
+      "tags": {
+        "moving": [
+          "3.4"
+        ],
+        "immutable": []
+      },
+      "oci": {
+        "authors": "Alexey Ivanov <lexa.ivanov@gmail.com>",
+        "source": "https://github.com/inspired-geek/redmine-alpine",
+        "url": "https://github.com/inspired-geek/redmine-alpine",
+        "documentation": "https://github.com/inspired-geek/redmine-alpine#readme",
+        "licenses": "GPL-2.0-or-later",
+        "title": "Redmine 3.4 Alpine",
+        "version": "3.4.13",
+        "description": "Redmine 3.4.13 on Alpine with Puma; unsupported compatibility release in the common mandatory build"
+      },
+      "size_budgets": {
+        "linux/amd64": {
+          "rootfs_bytes": 196474522,
+          "gzip_bytes": 68766391,
+          "zstd_chunked_bytes": 74643800
+        }
+      }
+    },
+    {
+      "id": "4.0",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "redmine_version": "4.0.9",
+      "source": {
+        "kind": "release_archive",
+        "url": "https://www.redmine.org/releases/redmine-4.0.9.tar.gz",
+        "sha256": "04a772b0b8f8ce6493614a7cb22ed82cb9b43c75dcdbeb5c2f925bae98e0d5df",
+        "source_date_epoch": 1619448008
+      },
+      "base": {
+        "reference": "alpine:3.11@sha256:bcae378eacedab83da66079d9366c8f5df542d7ed9ab23bf487e3e1a8481375d"
+      },
+      "ruby": {
+        "version": "2.6.8",
+        "install_mode": "alpine_package"
+      },
+      "bundler_version": "2.4.20",
+      "bundler_gem_sha256": "744b2b1951da613af2af6854f7c1f9e16dd90b4b66cd9af1a27a9f448c761bee",
+      "force_ruby_platform": true,
+      "puma_version": "6.6.1",
+      "packages": {
+        "feature": [
+          "ca-certificates",
+          "ghostscript",
+          "imagemagick6",
+          "shared-mime-info",
+          "ttf-dejavu",
+          "tzdata"
+        ],
+        "runtime": [
+          "mariadb-connector-c",
+          "ruby",
+          "sqlite-libs"
+        ],
+        "build": [
+          "build-base",
+          "imagemagick6-dev",
+          "linux-headers",
+          "mariadb-dev",
+          "pax-utils",
+          "ruby-dev",
+          "ruby-etc",
+          "sqlite-dev"
+        ]
+      },
+      "compatibility_gems": [
+        {
+          "name": "builder",
+          "requirement": "=3.2.4"
+        },
+        {
+          "name": "sqlite3",
+          "requirement": "~>1.3.12"
+        },
+        {
+          "name": "mysql2",
+          "requirement": "~>0.5.0"
+        },
+        {
+          "name": "json",
+          "requirement": "~>2.6.3"
+        },
+        {
+          "name": "bigdecimal",
+          "requirement": "~>3.1.4"
+        },
+        {
+          "name": "loofah",
+          "requirement": "=2.19.1"
+        },
+        {
+          "name": "etc",
+          "requirement": "=1.4.2"
+        },
+        {
+          "name": "tzinfo-data",
+          "requirement": null
+        },
+        {
+          "name": "nio4r",
+          "requirement": "=2.7.0"
+        }
+      ],
+      "runtime_checks": {
+        "commands": [
+          "ruby",
+          "bundle",
+          "gs",
+          "convert"
+        ],
+        "requires": [
+          "mysql2",
+          "sqlite3",
+          "puma",
+          "nio4r",
+          "json",
+          "bigdecimal",
+          "loofah",
+          "etc",
+          "blankslate"
+        ],
+        "paths": [
+          "/usr/src/redmine",
+          "/usr/local/bundle",
+          "/usr/local/bin/docker-entrypoint",
+          "/usr/src/redmine/config/database.yml",
+          "/usr/src/redmine/config/secrets.yml",
+          "/usr/src/redmine/config/puma.rb",
+          "/usr/src/redmine/files",
+          "/usr/src/redmine/log",
+          "/usr/src/redmine/plugins",
+          "/usr/src/redmine/public/plugin_assets",
+          "/usr/src/redmine/public/themes",
+          "/usr/src/redmine/sqlite",
+          "/usr/src/redmine/tmp",
+          "/usr/src/redmine/tmp/pdf",
+          "/usr/src/redmine/tmp/pids"
+        ],
+        "cleanup_keep_paths": []
+      },
+      "tags": {
+        "moving": [
+          "4.0"
+        ],
+        "immutable": []
+      },
+      "oci": {
+        "authors": "Alexey Ivanov <lexa.ivanov@gmail.com>",
+        "source": "https://github.com/inspired-geek/redmine-alpine",
+        "url": "https://github.com/inspired-geek/redmine-alpine",
+        "documentation": "https://github.com/inspired-geek/redmine-alpine#readme",
+        "licenses": "GPL-2.0-or-later",
+        "title": "Redmine 4.0 Alpine",
+        "version": "4.0.9",
+        "description": "Redmine 4.0.9 on Alpine with Puma; unsupported compatibility release in the common mandatory build"
+      },
+      "size_budgets": {
+        "linux/amd64": {
+          "rootfs_bytes": 193172921,
+          "gzip_bytes": 69063571,
+          "zstd_chunked_bytes": 73422537
+        }
+      }
+    },
+    {
+      "id": "4.1",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "redmine_version": "4.1.7",
+      "source": {
+        "kind": "release_archive",
+        "url": "https://www.redmine.org/releases/redmine-4.1.7.tar.gz",
+        "sha256": "bf56cade5d0a6623af590652bffe2865208f399fe77746d4e1bbd9d1a995a38a",
+        "source_date_epoch": 1648497012
+      },
+      "base": {
+        "reference": "alpine:3.11@sha256:bcae378eacedab83da66079d9366c8f5df542d7ed9ab23bf487e3e1a8481375d"
+      },
+      "ruby": {
+        "version": "2.6.8",
+        "install_mode": "alpine_package"
+      },
+      "bundler_version": "2.4.20",
+      "bundler_gem_sha256": "744b2b1951da613af2af6854f7c1f9e16dd90b4b66cd9af1a27a9f448c761bee",
+      "force_ruby_platform": true,
+      "puma_version": "6.6.1",
+      "packages": {
+        "feature": [
+          "ca-certificates",
+          "ghostscript",
+          "imagemagick6",
+          "shared-mime-info",
+          "ttf-dejavu",
+          "tzdata"
+        ],
+        "runtime": [
+          "mariadb-connector-c",
+          "ruby",
+          "sqlite-libs"
+        ],
+        "build": [
+          "build-base",
+          "imagemagick6-dev",
+          "linux-headers",
+          "mariadb-dev",
+          "pax-utils",
+          "ruby-dev",
+          "ruby-etc",
+          "sqlite-dev"
+        ]
+      },
+      "compatibility_gems": [
+        {
+          "name": "builder",
+          "requirement": "=3.2.4"
+        },
+        {
+          "name": "sqlite3",
+          "requirement": "~>1.4.0"
+        },
+        {
+          "name": "mysql2",
+          "requirement": "~>0.5.0"
+        },
+        {
+          "name": "json",
+          "requirement": "~>2.6.3"
+        },
+        {
+          "name": "bigdecimal",
+          "requirement": "~>3.1.4"
+        },
+        {
+          "name": "loofah",
+          "requirement": "=2.19.1"
+        },
+        {
+          "name": "etc",
+          "requirement": "=1.4.2"
+        },
+        {
+          "name": "tzinfo-data",
+          "requirement": null
+        },
+        {
+          "name": "nio4r",
+          "requirement": "=2.7.0"
+        }
+      ],
+      "runtime_checks": {
+        "commands": [
+          "ruby",
+          "bundle",
+          "gs",
+          "convert"
+        ],
+        "requires": [
+          "mysql2",
+          "sqlite3",
+          "puma",
+          "nio4r",
+          "json",
+          "bigdecimal",
+          "loofah",
+          "etc",
+          "blankslate"
+        ],
+        "paths": [
+          "/usr/src/redmine",
+          "/usr/local/bundle",
+          "/usr/local/bin/docker-entrypoint",
+          "/usr/src/redmine/config/database.yml",
+          "/usr/src/redmine/config/secrets.yml",
+          "/usr/src/redmine/config/puma.rb",
+          "/usr/src/redmine/files",
+          "/usr/src/redmine/log",
+          "/usr/src/redmine/plugins",
+          "/usr/src/redmine/public/plugin_assets",
+          "/usr/src/redmine/public/themes",
+          "/usr/src/redmine/sqlite",
+          "/usr/src/redmine/tmp",
+          "/usr/src/redmine/tmp/pdf",
+          "/usr/src/redmine/tmp/pids"
+        ],
+        "cleanup_keep_paths": []
+      },
+      "tags": {
+        "moving": [
+          "4.1"
+        ],
+        "immutable": []
+      },
+      "oci": {
+        "authors": "Alexey Ivanov <lexa.ivanov@gmail.com>",
+        "source": "https://github.com/inspired-geek/redmine-alpine",
+        "url": "https://github.com/inspired-geek/redmine-alpine",
+        "documentation": "https://github.com/inspired-geek/redmine-alpine#readme",
+        "licenses": "GPL-2.0-or-later",
+        "title": "Redmine 4.1 Alpine",
+        "version": "4.1.7",
+        "description": "Redmine 4.1.7 on Alpine with Puma; unsupported compatibility release in the common mandatory build"
+      },
+      "size_budgets": {
+        "linux/amd64": {
+          "rootfs_bytes": 197552948,
+          "gzip_bytes": 72893252,
+          "zstd_chunked_bytes": 77556707
+        }
+      }
+    },
+    {
+      "id": "4.2",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "redmine_version": "4.2.11",
+      "source": {
+        "kind": "release_archive",
+        "url": "https://www.redmine.org/releases/redmine-4.2.11.tar.gz",
+        "sha256": "de4ce017c2ad0af94b2941259f356094f369b1b2c621b5a1dd8984a2cf10dc25",
+        "source_date_epoch": 1696056002
+      },
+      "base": {
+        "reference": "alpine:3.14@sha256:0f2d5c38dd7a4f4f733e688e3a6733cb5ab1ac6e3cb4603a5dd564e5bfb80eed"
+      },
+      "ruby": {
+        "version": "2.7.8",
+        "install_mode": "alpine_package"
+      },
+      "bundler_version": "2.4.22",
+      "bundler_gem_sha256": "747ba50b0e67df25cbd3b48f95831a77a4d53a581d55f063972fcb146d142c5f",
+      "force_ruby_platform": true,
+      "puma_version": "6.6.1",
+      "mariadb_connector": {
+        "version": "3.3.18",
+        "source_url": "https://codeload.github.com/mariadb-corporation/mariadb-connector-c/tar.gz/9e2b0370de0076461ebae71a06acfb7a9364395b",
+        "source_sha256": "c9bb36de53cab97dbec2f3fc47219f9ddb8d7068e532c6abd9b18f8e5d3850fe"
+      },
+      "packages": {
+        "feature": [
+          "ca-certificates",
+          "ghostscript",
+          "imagemagick6",
+          "shared-mime-info",
+          "ttf-dejavu",
+          "tzdata"
+        ],
+        "runtime": [
+          "ruby",
+          "sqlite-libs"
+        ],
+        "build": [
+          "build-base",
+          "cmake",
+          "imagemagick6-dev",
+          "linux-headers",
+          "openssl-dev",
+          "pax-utils",
+          "ruby-dev",
+          "ruby-etc",
+          "sqlite-dev",
+          "zlib-dev"
+        ]
+      },
+      "compatibility_gems": [
+        {
+          "name": "builder",
+          "requirement": "=3.2.4"
+        },
+        {
+          "name": "sqlite3",
+          "requirement": "~>1.4.0"
+        },
+        {
+          "name": "mysql2",
+          "requirement": "~>0.5.0"
+        },
+        {
+          "name": "json",
+          "requirement": "~>2.6.3"
+        },
+        {
+          "name": "bigdecimal",
+          "requirement": "~>3.1.4"
+        },
+        {
+          "name": "etc",
+          "requirement": "~>1.4.2"
+        },
+        {
+          "name": "tzinfo-data",
+          "requirement": null
+        },
+        {
+          "name": "nio4r",
+          "requirement": "=2.7.0"
+        }
+      ],
+      "runtime_checks": {
+        "commands": [
+          "ruby",
+          "bundle",
+          "gs",
+          "convert"
+        ],
+        "requires": [
+          "mysql2",
+          "sqlite3",
+          "puma",
+          "nio4r",
+          "json",
+          "bigdecimal",
+          "etc",
+          "blankslate"
+        ],
+        "paths": [
+          "/usr/src/redmine",
+          "/usr/local/bundle",
+          "/usr/local/bin/docker-entrypoint",
+          "/usr/src/redmine/config/database.yml",
+          "/usr/src/redmine/config/secrets.yml",
+          "/usr/src/redmine/config/puma.rb",
+          "/usr/src/redmine/files",
+          "/usr/src/redmine/log",
+          "/usr/src/redmine/plugins",
+          "/usr/src/redmine/public/plugin_assets",
+          "/usr/src/redmine/public/themes",
+          "/usr/src/redmine/sqlite",
+          "/usr/src/redmine/tmp",
+          "/usr/src/redmine/tmp/pdf",
+          "/usr/src/redmine/tmp/pids",
+          "/opt/mariadb-connector/lib/mariadb/libmariadb.so.3",
+          "/opt/mariadb-connector/lib/mariadb/plugin"
+        ],
+        "cleanup_keep_paths": []
+      },
+      "tags": {
+        "moving": [
+          "4.2"
+        ],
+        "immutable": []
+      },
+      "oci": {
+        "authors": "Alexey Ivanov <lexa.ivanov@gmail.com>",
+        "source": "https://github.com/inspired-geek/redmine-alpine",
+        "url": "https://github.com/inspired-geek/redmine-alpine",
+        "documentation": "https://github.com/inspired-geek/redmine-alpine#readme",
+        "licenses": "GPL-2.0-or-later",
+        "title": "Redmine 4.2 Alpine",
+        "version": "4.2.11",
+        "description": "Redmine 4.2.11 on Alpine with Puma; unsupported compatibility release in the common mandatory build"
+      },
+      "size_budgets": {
+        "linux/amd64": {
+          "rootfs_bytes": 225427508,
+          "gzip_bytes": 84266561,
+          "zstd_chunked_bytes": 88892224
+        }
+      }
+    },
+    {
+      "id": "5.0",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "redmine_version": "5.0.6",
+      "source": {
+        "kind": "release_archive",
+        "url": "https://www.redmine.org/releases/redmine-5.0.6.tar.gz",
+        "sha256": "488fe08f37a8eb1011415922a8ea743b7f38d8a7a5f8822950a34a375dcf08ee",
+        "source_date_epoch": 1696056004
+      },
+      "base": {
+        "reference": "alpine:3.17@sha256:8fc3dacfb6d69da8d44e42390de777e48577085db99aa4e4af35f483eb08b989"
+      },
+      "ruby": {
+        "version": "3.1.5",
+        "install_mode": "alpine_package"
+      },
+      "bundler_version": "2.4.22",
+      "bundler_gem_sha256": "747ba50b0e67df25cbd3b48f95831a77a4d53a581d55f063972fcb146d142c5f",
+      "force_ruby_platform": true,
+      "puma_version": "8.0.2",
+      "packages": {
+        "feature": [
+          "ca-certificates",
+          "ghostscript",
+          "imagemagick",
+          "shared-mime-info",
+          "ttf-dejavu",
+          "tzdata"
+        ],
+        "runtime": [
+          "mariadb-connector-c",
+          "ruby",
+          "sqlite-libs"
+        ],
+        "build": [
+          "build-base",
+          "imagemagick-dev",
+          "linux-headers",
+          "mariadb-dev",
+          "pax-utils",
+          "ruby-dev",
+          "sqlite-dev"
+        ]
+      },
+      "compatibility_gems": [
+        {
+          "name": "builder",
+          "requirement": "=3.2.4"
+        },
+        {
+          "name": "sqlite3",
+          "requirement": "~>1.4.0"
+        },
+        {
+          "name": "mysql2",
+          "requirement": "~>0.5.0"
+        },
+        {
+          "name": "tzinfo-data",
+          "requirement": null
+        }
+      ],
+      "runtime_checks": {
+        "commands": [
+          "ruby",
+          "bundle",
+          "gs",
+          "convert"
+        ],
+        "requires": [
+          "mysql2",
+          "sqlite3",
+          "puma",
+          "blankslate"
+        ],
+        "paths": [
+          "/usr/src/redmine",
+          "/usr/local/bundle",
+          "/usr/local/bin/docker-entrypoint",
+          "/usr/src/redmine/config/database.yml",
+          "/usr/src/redmine/config/secrets.yml",
+          "/usr/src/redmine/config/puma.rb",
+          "/usr/src/redmine/files",
+          "/usr/src/redmine/log",
+          "/usr/src/redmine/plugins",
+          "/usr/src/redmine/public/plugin_assets",
+          "/usr/src/redmine/public/themes",
+          "/usr/src/redmine/sqlite",
+          "/usr/src/redmine/tmp",
+          "/usr/src/redmine/tmp/pdf",
+          "/usr/src/redmine/tmp/pids"
+        ],
+        "cleanup_keep_paths": []
+      },
+      "tags": {
+        "moving": [
+          "5.0"
+        ],
+        "immutable": []
+      },
+      "oci": {
+        "authors": "Alexey Ivanov <lexa.ivanov@gmail.com>",
+        "source": "https://github.com/inspired-geek/redmine-alpine",
+        "url": "https://github.com/inspired-geek/redmine-alpine",
+        "documentation": "https://github.com/inspired-geek/redmine-alpine#readme",
+        "licenses": "GPL-2.0-or-later",
+        "title": "Redmine 5.0 Alpine",
+        "version": "5.0.6",
+        "description": "Redmine 5.0.6 on Alpine with Puma; unsupported compatibility release in the common mandatory build"
+      },
+      "size_budgets": {
+        "linux/amd64": {
+          "rootfs_bytes": 277202381,
+          "gzip_bytes": 97174266,
+          "zstd_chunked_bytes": 101685975
+        }
+      }
+    },
+    {
+      "id": "trunk",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "redmine_version": "trunk",
+      "source": {
+        "kind": "git_archive",
+        "repository": "https://github.com/redmine/redmine",
+        "ref": "refs/heads/master"
+      },
+      "base": {
+        "reference": "ruby:3.4-alpine3.24"
+      },
+      "ruby": {
+        "version": "3.4.10",
+        "install_mode": "base_image"
+      },
+      "bundler_version": "2.6.9",
+      "bundler_gem_sha256": "a25675ffbd055ae1186766cc1e120b4cf62588e88abb59b99c57e22b1c55c9eb",
+      "force_ruby_platform": false,
+      "puma_version": "8.0.2",
+      "packages": {
+        "feature": [
+          "ca-certificates",
+          "ghostscript",
+          "imagemagick",
+          "shared-mime-info",
+          "ttf-dejavu",
+          "tzdata"
+        ],
+        "runtime": [
+          "mariadb-connector-c",
+          "sqlite-libs"
+        ],
+        "build": [
+          "coreutils",
+          "gcc",
+          "make",
+          "mariadb-dev",
+          "musl-dev",
+          "pax-utils",
+          "patch",
+          "sqlite-dev",
+          "wget",
+          "yaml-dev",
+          "zlib-dev"
+        ]
+      },
+      "compatibility_gems": [
+        {
+          "name": "sqlite3",
+          "requirement": "=2.9.4"
+        },
+        {
+          "name": "mysql2",
+          "requirement": "~>0.5.0"
+        },
+        {
+          "name": "with_advisory_lock",
+          "requirement": null
+        }
+      ],
+      "runtime_checks": {
+        "commands": [
+          "ruby",
+          "bundle",
+          "gs",
+          "convert"
+        ],
+        "requires": [
+          "mysql2",
+          "sqlite3",
+          "puma",
+          "commonmarker",
+          "with_advisory_lock"
+        ],
+        "paths": [
+          "/usr/src/redmine",
+          "/usr/local/bundle",
+          "/usr/local/bin/docker-entrypoint",
+          "/usr/src/redmine/config/database.yml",
+          "/usr/src/redmine/config/secrets.yml",
+          "/usr/src/redmine/config/puma.rb",
+          "/usr/src/redmine/files",
+          "/usr/src/redmine/log",
+          "/usr/src/redmine/plugins",
+          "/usr/src/redmine/public/plugin_assets",
+          "/usr/src/redmine/public/themes",
+          "/usr/src/redmine/sqlite",
+          "/usr/src/redmine/tmp",
+          "/usr/src/redmine/tmp/pdf",
+          "/usr/src/redmine/tmp/pids"
+        ],
+        "cleanup_keep_paths": []
+      },
+      "tags": {
+        "moving": [
+          "trunk"
+        ],
+        "immutable": []
+      },
+      "oci": {
+        "authors": "Alexey Ivanov <lexa.ivanov@gmail.com>",
+        "source": "https://github.com/inspired-geek/redmine-alpine",
+        "url": "https://github.com/inspired-geek/redmine-alpine",
+        "documentation": "https://github.com/inspired-geek/redmine-alpine#readme",
+        "licenses": "GPL-2.0-or-later",
+        "title": "Redmine trunk Alpine",
+        "version": "trunk",
+        "description": "Redmine trunk upstream development snapshot on Alpine with Puma; common mandatory build for upstream development"
+      },
+      "size_budgets": {
+        "linux/amd64": {
+          "rootfs_bytes": 303365561,
+          "gzip_bytes": 122387378,
+          "zstd_chunked_bytes": 128368247
+        }
+      }
+    },
+    {
+      "id": "5.1",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "redmine_version": "5.1.13",
+      "source": {
+        "kind": "release_archive",
+        "url": "https://www.redmine.org/releases/redmine-5.1.13.tar.gz",
+        "sha256": "1a3d1039e474e787cebf223da148bf28373e4bca262197a53cfa6139640ebe5f",
+        "source_date_epoch": 1781551502
+      },
+      "base": {
+        "reference": "ruby:3.2-alpine3.23@sha256:d206c25708a44df6a7ce22213ee5da9fc0a9f7b31ce884429ba758db48abdc62"
+      },
+      "ruby": {
+        "version": "3.2.11",
+        "install_mode": "base_image"
+      },
+      "bundler_version": "2.4.22",
+      "bundler_gem_sha256": "747ba50b0e67df25cbd3b48f95831a77a4d53a581d55f063972fcb146d142c5f",
+      "force_ruby_platform": true,
+      "puma_version": "8.0.2",
+      "packages": {
+        "feature": [
+          "ca-certificates",
+          "ghostscript",
+          "imagemagick",
+          "shared-mime-info",
+          "ttf-dejavu",
+          "tzdata"
+        ],
+        "runtime": [
+          "mariadb-connector-c",
+          "sqlite-libs"
+        ],
+        "build": [
+          "coreutils",
+          "gcc",
+          "make",
+          "mariadb-dev",
+          "musl-dev",
+          "pax-utils",
+          "patch",
+          "sqlite-dev",
+          "ttf2ufm",
+          "wget",
+          "yaml-dev",
+          "zlib-dev"
+        ]
+      },
+      "compatibility_gems": [
+        {
+          "name": "sqlite3",
+          "requirement": "~>1.6.0"
+        },
+        {
+          "name": "mysql2",
+          "requirement": "~>0.5.0"
+        },
+        {
+          "name": "with_advisory_lock",
+          "requirement": null
+        }
+      ],
+      "runtime_checks": {
+        "commands": [
+          "ruby",
+          "bundle",
+          "gs",
+          "convert"
+        ],
+        "requires": [
+          "mysql2",
+          "sqlite3",
+          "puma",
+          "with_advisory_lock"
+        ],
+        "paths": [
+          "/usr/src/redmine",
+          "/usr/local/bundle",
+          "/usr/local/bin/docker-entrypoint",
+          "/usr/src/redmine/config/database.yml",
+          "/usr/src/redmine/config/secrets.yml",
+          "/usr/src/redmine/config/puma.rb",
+          "/usr/src/redmine/files",
+          "/usr/src/redmine/log",
+          "/usr/src/redmine/plugins",
+          "/usr/src/redmine/public/plugin_assets",
+          "/usr/src/redmine/public/themes",
+          "/usr/src/redmine/sqlite",
+          "/usr/src/redmine/tmp",
+          "/usr/src/redmine/tmp/pdf",
+          "/usr/src/redmine/tmp/pids"
+        ],
+        "cleanup_keep_paths": []
+      },
+      "tags": {
+        "moving": [
+          "5.1"
+        ],
+        "immutable": [
+          "5.1.13"
+        ]
+      },
+      "oci": {
+        "authors": "Alexey Ivanov <lexa.ivanov@gmail.com>",
+        "source": "https://github.com/inspired-geek/redmine-alpine",
+        "url": "https://github.com/inspired-geek/redmine-alpine",
+        "documentation": "https://github.com/inspired-geek/redmine-alpine#readme",
+        "licenses": "GPL-2.0-or-later",
+        "title": "Redmine 5.1 Alpine",
+        "version": "5.1.13",
+        "description": "Redmine 5.1.13 on Alpine with Puma; unsupported release retained in the common mandatory build"
+      },
+      "size_budgets": {
+        "linux/amd64": {
+          "rootfs_bytes": 276678052,
+          "gzip_bytes": 114564088,
+          "zstd_chunked_bytes": 120014752
+        }
+      }
+    },
+    {
+      "id": "6.0",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "redmine_version": "6.0.10",
+      "source": {
+        "kind": "release_archive",
+        "url": "https://www.redmine.org/releases/redmine-6.0.10.tar.gz",
+        "sha256": "0f3f3a7159188fbd65a365519037ebe6882c6dace78d8630de22c570ff20ca77",
+        "source_date_epoch": 1781551504
+      },
+      "base": {
+        "reference": "ruby:3.3-alpine3.24@sha256:940f1f8ba78c93b303eb2a632b249792cf60435517da260f3a1b9c8b8f1e7dfe"
+      },
+      "ruby": {
+        "version": "3.3.11",
+        "install_mode": "base_image"
+      },
+      "bundler_version": "2.5.23",
+      "bundler_gem_sha256": "83d52433862a6076268d51d5c879e4467365db0bf376cd89aefb1661baf18618",
+      "force_ruby_platform": false,
+      "puma_version": "8.0.2",
+      "packages": {
+        "feature": [
+          "ca-certificates",
+          "ghostscript",
+          "imagemagick",
+          "shared-mime-info",
+          "ttf-dejavu",
+          "tzdata"
+        ],
+        "runtime": [
+          "mariadb-connector-c",
+          "sqlite-libs"
+        ],
+        "build": [
+          "coreutils",
+          "gcc",
+          "make",
+          "mariadb-dev",
+          "musl-dev",
+          "pax-utils",
+          "patch",
+          "sqlite-dev",
+          "ttf2ufm",
+          "wget",
+          "yaml-dev",
+          "zlib-dev"
+        ]
+      },
+      "compatibility_gems": [
+        {
+          "name": "sqlite3",
+          "requirement": "~>1.7.0",
+          "force_ruby_platform": true
+        },
+        {
+          "name": "mysql2",
+          "requirement": "~>0.5.0"
+        },
+        {
+          "name": "with_advisory_lock",
+          "requirement": null
+        }
+      ],
+      "runtime_checks": {
+        "commands": [
+          "ruby",
+          "bundle",
+          "gs",
+          "convert"
+        ],
+        "requires": [
+          "mysql2",
+          "sqlite3",
+          "puma",
+          "with_advisory_lock"
+        ],
+        "paths": [
+          "/usr/src/redmine",
+          "/usr/local/bundle",
+          "/usr/local/bin/docker-entrypoint",
+          "/usr/src/redmine/config/database.yml",
+          "/usr/src/redmine/config/secrets.yml",
+          "/usr/src/redmine/config/puma.rb",
+          "/usr/src/redmine/files",
+          "/usr/src/redmine/log",
+          "/usr/src/redmine/plugins",
+          "/usr/src/redmine/public/plugin_assets",
+          "/usr/src/redmine/public/themes",
+          "/usr/src/redmine/sqlite",
+          "/usr/src/redmine/tmp",
+          "/usr/src/redmine/tmp/pdf",
+          "/usr/src/redmine/tmp/pids"
+        ],
+        "cleanup_keep_paths": []
+      },
+      "tags": {
+        "moving": [
+          "6.0"
+        ],
+        "immutable": [
+          "6.0.10"
+        ]
+      },
+      "oci": {
+        "authors": "Alexey Ivanov <lexa.ivanov@gmail.com>",
+        "source": "https://github.com/inspired-geek/redmine-alpine",
+        "url": "https://github.com/inspired-geek/redmine-alpine",
+        "documentation": "https://github.com/inspired-geek/redmine-alpine#readme",
+        "licenses": "GPL-2.0-or-later",
+        "title": "Redmine 6.0 Alpine",
+        "version": "6.0.10",
+        "description": "Redmine 6.0.10 on Alpine with Puma; common mandatory build with important-security-fixes-only support"
+      },
+      "size_budgets": {
+        "linux/amd64": {
+          "rootfs_bytes": 292266916,
+          "gzip_bytes": 117888831,
+          "zstd_chunked_bytes": 123614768
+        }
+      }
+    },
+    {
+      "id": "6.1",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "redmine_version": "6.1.3",
+      "source": {
+        "kind": "release_archive",
+        "url": "https://www.redmine.org/releases/redmine-6.1.3.tar.gz",
+        "sha256": "61db3008c7fd18a3afc559ed656fd38fdf8df8220ac69598b319095183190b7a",
+        "source_date_epoch": 1781551506
+      },
+      "base": {
+        "reference": "ruby:3.4-alpine3.24@sha256:c5a5064d190055633011c03aa800170cc36945ff3afb5f6c915329f92d6f1e00"
+      },
+      "ruby": {
+        "version": "3.4.10",
+        "install_mode": "base_image"
+      },
+      "bundler_version": "2.6.9",
+      "bundler_gem_sha256": "a25675ffbd055ae1186766cc1e120b4cf62588e88abb59b99c57e22b1c55c9eb",
+      "force_ruby_platform": false,
+      "puma_version": "8.0.2",
+      "packages": {
+        "feature": [
+          "ca-certificates",
+          "ghostscript",
+          "imagemagick",
+          "shared-mime-info",
+          "ttf-dejavu",
+          "tzdata"
+        ],
+        "runtime": [
+          "mariadb-connector-c",
+          "sqlite-libs"
+        ],
+        "build": [
+          "coreutils",
+          "gcc",
+          "make",
+          "mariadb-dev",
+          "musl-dev",
+          "pax-utils",
+          "patch",
+          "sqlite-dev",
+          "wget",
+          "yaml-dev",
+          "zlib-dev"
+        ]
+      },
+      "compatibility_gems": [
+        {
+          "name": "sqlite3",
+          "requirement": "~>2.5.0"
+        },
+        {
+          "name": "mysql2",
+          "requirement": "~>0.5.0"
+        },
+        {
+          "name": "with_advisory_lock",
+          "requirement": null
+        }
+      ],
+      "runtime_checks": {
+        "commands": [
+          "ruby",
+          "bundle",
+          "gs",
+          "convert"
+        ],
+        "requires": [
+          "mysql2",
+          "sqlite3",
+          "puma",
+          "commonmarker",
+          "with_advisory_lock"
+        ],
+        "paths": [
+          "/usr/src/redmine",
+          "/usr/local/bundle",
+          "/usr/local/bin/docker-entrypoint",
+          "/usr/src/redmine/config/database.yml",
+          "/usr/src/redmine/config/secrets.yml",
+          "/usr/src/redmine/config/puma.rb",
+          "/usr/src/redmine/files",
+          "/usr/src/redmine/log",
+          "/usr/src/redmine/plugins",
+          "/usr/src/redmine/public/plugin_assets",
+          "/usr/src/redmine/public/themes",
+          "/usr/src/redmine/sqlite",
+          "/usr/src/redmine/tmp",
+          "/usr/src/redmine/tmp/pdf",
+          "/usr/src/redmine/tmp/pids"
+        ],
+        "cleanup_keep_paths": []
+      },
+      "tags": {
+        "moving": [
+          "6.1"
+        ],
+        "immutable": [
+          "6.1.3"
+        ]
+      },
+      "oci": {
+        "authors": "Alexey Ivanov <lexa.ivanov@gmail.com>",
+        "source": "https://github.com/inspired-geek/redmine-alpine",
+        "url": "https://github.com/inspired-geek/redmine-alpine",
+        "documentation": "https://github.com/inspired-geek/redmine-alpine#readme",
+        "licenses": "GPL-2.0-or-later",
+        "title": "Redmine 6.1 Alpine",
+        "version": "6.1.3",
+        "description": "Redmine 6.1.3 on Alpine with Puma; common mandatory build with bug-fix and security support"
+      },
+      "size_budgets": {
+        "linux/amd64": {
+          "rootfs_bytes": 303164498,
+          "gzip_bytes": 121625971,
+          "zstd_chunked_bytes": 127561141
+        }
+      }
+    },
+    {
+      "id": "7.0",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "redmine_version": "7.0.0",
+      "source": {
+        "kind": "release_archive",
+        "url": "https://www.redmine.org/releases/redmine-7.0.0.tar.gz",
+        "sha256": "857e9f8860c31e4c531389e5d93eea26488dba69830484a3b0aa904be615e90a",
+        "source_date_epoch": 1782853202
+      },
+      "base": {
+        "reference": "ruby:3.4-alpine3.24@sha256:c5a5064d190055633011c03aa800170cc36945ff3afb5f6c915329f92d6f1e00"
+      },
+      "ruby": {
+        "version": "3.4.10",
+        "install_mode": "base_image"
+      },
+      "bundler_version": "2.6.9",
+      "bundler_gem_sha256": "a25675ffbd055ae1186766cc1e120b4cf62588e88abb59b99c57e22b1c55c9eb",
+      "force_ruby_platform": false,
+      "puma_version": "8.0.2",
+      "packages": {
+        "feature": [
+          "ca-certificates",
+          "ghostscript",
+          "imagemagick",
+          "shared-mime-info",
+          "ttf-dejavu",
+          "tzdata"
+        ],
+        "runtime": [
+          "mariadb-connector-c",
+          "sqlite-libs"
+        ],
+        "build": [
+          "coreutils",
+          "gcc",
+          "make",
+          "mariadb-dev",
+          "musl-dev",
+          "pax-utils",
+          "patch",
+          "sqlite-dev",
+          "wget",
+          "yaml-dev",
+          "zlib-dev"
+        ]
+      },
+      "compatibility_gems": [
+        {
+          "name": "sqlite3",
+          "requirement": "=2.9.4"
+        },
+        {
+          "name": "mysql2",
+          "requirement": "~>0.5.0"
+        },
+        {
+          "name": "with_advisory_lock",
+          "requirement": null
+        }
+      ],
+      "runtime_checks": {
+        "commands": [
+          "ruby",
+          "bundle",
+          "gs",
+          "convert"
+        ],
+        "requires": [
+          "mysql2",
+          "sqlite3",
+          "puma",
+          "commonmarker",
+          "with_advisory_lock"
+        ],
+        "paths": [
+          "/usr/src/redmine",
+          "/usr/local/bundle",
+          "/usr/local/bin/docker-entrypoint",
+          "/usr/src/redmine/config/database.yml",
+          "/usr/src/redmine/config/secrets.yml",
+          "/usr/src/redmine/config/puma.rb",
+          "/usr/src/redmine/files",
+          "/usr/src/redmine/log",
+          "/usr/src/redmine/plugins",
+          "/usr/src/redmine/public/plugin_assets",
+          "/usr/src/redmine/public/themes",
+          "/usr/src/redmine/sqlite",
+          "/usr/src/redmine/tmp",
+          "/usr/src/redmine/tmp/pdf",
+          "/usr/src/redmine/tmp/pids"
+        ],
+        "cleanup_keep_paths": []
+      },
+      "tags": {
+        "moving": [
+          "7.0"
+        ],
+        "immutable": [
+          "7.0.0"
+        ]
+      },
+      "oci": {
+        "authors": "Alexey Ivanov <lexa.ivanov@gmail.com>",
+        "source": "https://github.com/inspired-geek/redmine-alpine",
+        "url": "https://github.com/inspired-geek/redmine-alpine",
+        "documentation": "https://github.com/inspired-geek/redmine-alpine#readme",
+        "licenses": "GPL-2.0-or-later",
+        "title": "Redmine 7.0 Alpine",
+        "version": "7.0.0",
+        "description": "Redmine 7.0.0 on Alpine with Puma; common mandatory build for the fully supported current stable release"
+      },
+      "size_budgets": {
+        "linux/amd64": {
+          "rootfs_bytes": 303391151,
+          "gzip_bytes": 122385774,
+          "zstd_chunked_bytes": 128365475
+        }
+      }
+    }
+  ]
+}

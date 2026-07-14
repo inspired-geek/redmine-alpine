@@ -1,0 +1,41 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -eq 0 ]; then
+  printf 'usage: %s APK_ADD_ARGUMENT...\n' "$0" >&2
+  exit 64
+fi
+
+max_attempts=${APK_ADD_MAX_ATTEMPTS:-3}
+retry_delay=${APK_ADD_RETRY_DELAY_SECONDS:-2}
+case $max_attempts in
+  ''|*[!0-9]*|0)
+    printf 'ERROR: APK_ADD_MAX_ATTEMPTS must be a positive integer\n' >&2
+    exit 64
+    ;;
+esac
+case $retry_delay in
+  ''|*[!0-9]*)
+    printf 'ERROR: APK_ADD_RETRY_DELAY_SECONDS must be a non-negative integer\n' >&2
+    exit 64
+    ;;
+esac
+
+attempt=1
+while [ "$attempt" -le "$max_attempts" ]; do
+  if apk add --no-cache "$@"; then
+    exit 0
+  else
+    status=$?
+  fi
+
+  if [ "$attempt" -ge "$max_attempts" ]; then
+    printf 'ERROR: apk add failed after %s attempts\n' "$attempt" >&2
+    exit "$status"
+  fi
+
+  printf 'WARNING: apk add failed (attempt %s/%s); retrying\n' \
+    "$attempt" "$max_attempts" >&2
+  sleep "$retry_delay"
+  attempt=$((attempt + 1))
+done

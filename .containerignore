@@ -1,0 +1,9 @@
+.git
+.gitignore
+.DS_Store
+.worktrees
+.superpowers
+artifacts
+tests
+README.md
+docker-compose.yml

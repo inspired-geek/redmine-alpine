@@ -1,0 +1,194 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  printf '%s\n' \
+    "usage: $0 PROFILE --image IMAGE --gzip-archive FILE --output-dir DIR" \
+    '       [--zstd-level LEVEL] [--resolution FILE]' >&2
+  exit 64
+}
+
+[ "$#" -gt 0 ] || usage
+profile_id=$1
+shift
+
+image=
+gzip_archive=
+output_dir=
+zstd_level=
+resolution=
+
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --image)
+      [ "$#" -ge 2 ] || usage
+      image=$2
+      shift 2
+      ;;
+    --gzip-archive)
+      [ "$#" -ge 2 ] || usage
+      gzip_archive=$2
+      shift 2
+      ;;
+    --output-dir)
+      [ "$#" -ge 2 ] || usage
+      output_dir=$2
+      shift 2
+      ;;
+    --zstd-level)
+      [ "$#" -ge 2 ] || usage
+      zstd_level=$2
+      shift 2
+      ;;
+    --resolution)
+      [ "$#" -ge 2 ] || usage
+      resolution=$2
+      shift 2
+      ;;
+    *) usage ;;
+  esac
+done
+
+[ -n "$image" ] && [ -n "$gzip_archive" ] && [ -n "$output_dir" ] || usage
+
+case $image in
+  *[!A-Za-z0-9_./:@-]*|'')
+    printf 'ERROR: unsafe image reference: %s\n' "$image" >&2
+    exit 64
+    ;;
+esac
+case $zstd_level in
+  *[!0-9]*)
+    printf 'ERROR: zstd level must be an integer candidate\n' >&2
+    exit 64
+    ;;
+esac
+
+root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd -P)
+set -- "$root/scripts/image-catalog" profile "$profile_id"
+if [ -n "$resolution" ]; then
+  set -- "$@" --resolution "$resolution"
+fi
+"$@" >/dev/null
+
+compression=$("$root/scripts/image-catalog" compression)
+gzip_level=$(
+  printf '%s' "$compression" |
+    ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("gzip_level")'
+)
+zstd_candidates=$(
+  printf '%s' "$compression" |
+    ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("zstd_candidates").join(" ")'
+)
+if [ -z "$zstd_level" ]; then
+  zstd_level=$(
+    printf '%s' "$compression" |
+      ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("selected_zstd_level")'
+  )
+fi
+case " $zstd_candidates " in
+  *" $zstd_level "*) ;;
+  *)
+    printf 'ERROR: zstd level %s is not a catalog candidate: %s\n' \
+      "$zstd_level" "$zstd_candidates" >&2
+    exit 64
+    ;;
+esac
+
+[ -s "$gzip_archive" ] || {
+  printf 'ERROR: gzip OCI archive is missing or empty: %s\n' "$gzip_archive" >&2
+  exit 66
+}
+
+indexer=${IMAGE_COMPRESS_INDEXER:-$root/scripts/oci-index}
+[ -x "$indexer" ] || {
+  printf 'ERROR: OCI index builder is not executable: %s\n' "$indexer" >&2
+  exit 69
+}
+
+run_podman() {
+  if [ "${IMAGE_COMPRESS_DIRECT_PODMAN:-0}" = 1 ]; then
+    podman "$@"
+  else
+    "$root/scripts/container-tools" podman "$@"
+  fi
+}
+
+mkdir -p "$output_dir"
+zstd_archive=$output_dir/rootfs.zstd-chunked.oci.tar
+index_archive=$output_dir/rootfs.index.oci.tar
+metadata=$output_dir/compression.json
+digest_file=$output_dir/.zstd-chunked.digest
+success=false
+
+cleanup() {
+  rm -f "$digest_file"
+  if [ "$success" != true ]; then
+    rm -f "$zstd_archive" "$index_archive" "$metadata"
+  fi
+}
+trap cleanup EXIT HUP INT TERM
+rm -f "$zstd_archive" "$index_archive" "$metadata" "$digest_file"
+
+run_podman push \
+  --format oci \
+  --compression-format zstd:chunked \
+  --compression-level "$zstd_level" \
+  --force-compression \
+  --digestfile "$digest_file" \
+  "$image" \
+  "oci-archive:$zstd_archive:$profile_id"
+
+zstd_image_digest=$(cat "$digest_file")
+zstd_image_digest_hex=${zstd_image_digest#sha256:}
+if [ "$zstd_image_digest_hex" = "$zstd_image_digest" ] ||
+   [ "${#zstd_image_digest_hex}" -ne 64 ]; then
+  printf 'ERROR: invalid zstd:chunked image digest: %s\n' \
+    "$zstd_image_digest" >&2
+  exit 1
+fi
+case $zstd_image_digest_hex in
+  *[!0-9a-f]*)
+    printf 'ERROR: invalid zstd:chunked image digest: %s\n' \
+      "$zstd_image_digest" >&2
+    exit 1
+    ;;
+esac
+
+set -- "$indexer" "$profile_id" \
+  --gzip-archive "$gzip_archive" \
+  --zstd-chunked-archive "$zstd_archive" \
+  --output "$index_archive"
+if [ -n "$resolution" ]; then
+  set -- "$@" --resolution "$resolution"
+fi
+"$@"
+
+ruby -rjson -rdigest -e '
+  output, profile, gzip_archive, zstd_archive, index_archive, gzip_level,
+    zstd_level, zstd_image_digest = ARGV
+  describe = lambda do |path|
+    {
+      "archive" => File.basename(path),
+      "bytes" => File.size(path),
+      "sha256" => Digest::SHA256.file(path).hexdigest
+    }
+  end
+  value = {
+    "profile" => profile,
+    "gzip" => describe.call(gzip_archive).merge(
+      "level" => Integer(gzip_level, 10)
+    ),
+    "zstd_chunked" => describe.call(zstd_archive).merge(
+      "level" => Integer(zstd_level, 10),
+      "image_digest" => zstd_image_digest
+    ),
+    "index" => describe.call(index_archive)
+  }
+  File.write(output, "#{JSON.pretty_generate(value)}\n")
+' "$metadata" "$profile_id" "$gzip_archive" "$zstd_archive" \
+  "$index_archive" "$gzip_level" "$zstd_level" "$zstd_image_digest"
+
+success=true
+printf 'image compression: PASS profile=%s gzip=%s zstd:chunked=%s\n' \
+  "$profile_id" "$gzip_level" "$zstd_level"

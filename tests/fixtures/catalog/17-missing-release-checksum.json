@@ -1,0 +1,7 @@
+{
+  "description": "release sources require immutable checksums",
+  "operations": [
+    {"op": "remove", "path": "/profiles/0/source/sha256"}
+  ],
+  "expected": "release source requires sha256"
+}

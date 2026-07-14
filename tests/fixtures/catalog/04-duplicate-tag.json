@@ -1,0 +1,7 @@
+{
+  "description": "managed tags are globally unique",
+  "operations": [
+    {"op": "replace", "path": "/profiles/1/tags/moving/0", "value": "3.4"}
+  ],
+  "expected": "duplicate managed tag"
+}

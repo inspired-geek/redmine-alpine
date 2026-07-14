@@ -1,0 +1,7 @@
+{
+  "description": "runtime paths cannot contain shell substitutions",
+  "operations": [
+    {"op": "replace", "path": "/profiles/0/runtime_checks/paths/0", "value": "/usr/src/redmine/$(id)"}
+  ],
+  "expected": "does not match pattern"
+}

@@ -1,0 +1,11 @@
+{
+  "description": "trunk remains a moving base before resolution",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/profiles/5/base/reference",
+      "value": "ruby:3.4-alpine3.24@sha256:c5a5064d190055633011c03aa800170cc36945ff3afb5f6c915329f92d6f1e00"
+    }
+  ],
+  "expected": "trunk base must remain moving before resolution"
+}

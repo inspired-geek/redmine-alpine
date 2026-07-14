@@ -1,0 +1,143 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 2 ] || [ "$1" != "--output" ] || [ -z "$2" ]; then
+  printf 'usage: %s --output RESOLUTION.json\n' "$0" >&2
+  exit 64
+fi
+
+output=$2
+root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+profile=$("$root/scripts/image-catalog" profile trunk)
+registry_tool=$(
+  ruby -rjson -e \
+    'print JSON.parse(File.read(ARGV.fetch(0))).dig("tool_policy", "registry_tool")' \
+    "$root/build/images.json"
+)
+container_tools=${TRUNK_CONTAINER_TOOLS:-$root/scripts/container-tools}
+[ -x "$container_tools" ] || {
+  printf 'ERROR: container tools wrapper is not executable: %s\n' \
+    "$container_tools" >&2
+  exit 69
+}
+
+run_skopeo() {
+  if [ "${TRUNK_DIRECT_SKOPEO:-0}" = 1 ]; then
+    skopeo "$@"
+  else
+    CONTAINER_TOOLS_IMAGE=$registry_tool \
+      "$container_tools" skopeo "$@"
+  fi
+}
+
+repository=$(printf '%s' "$profile" | ruby -rjson -e \
+  'print JSON.parse(STDIN.read).dig("source", "repository")')
+ref=$(printf '%s' "$profile" | ruby -rjson -e \
+  'print JSON.parse(STDIN.read).dig("source", "ref")')
+base=$(printf '%s' "$profile" | ruby -rjson -e \
+  'print JSON.parse(STDIN.read).dig("base", "reference")')
+
+line=$(
+  git \
+    -c http.lowSpeedLimit=1 \
+    -c http.lowSpeedTime=30 \
+    ls-remote "$repository" "$ref"
+)
+set -- $line
+commit=${1:-}
+resolved_ref=${2:-}
+ruby -e '
+  abort "invalid resolved commit" unless ARGV[0]&.match?(/\A[0-9a-f]{40}\z/)
+  abort "resolved ref mismatch" unless ARGV[1] == ARGV[2]
+' "$commit" "$resolved_ref" "$ref"
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+
+api_url="https://api.github.com/repos/redmine/redmine/commits/$commit"
+api_json=$(
+  curl \
+    --fail-with-body \
+    --silent \
+    --show-error \
+    --location \
+    --retry 3 \
+    --retry-all-errors \
+    --connect-timeout 10 \
+    --max-time 120 \
+    --header 'Accept: application/vnd.github+json' \
+    "$api_url"
+)
+
+created=$(
+  printf '%s' "$api_json" |
+    ruby -rjson -rtime -e '
+      value = JSON.parse(STDIN.read)
+      abort "GitHub commit SHA mismatch" unless value.fetch("sha") == ARGV.fetch(0)
+      print Time.iso8601(value.dig("commit", "committer", "date")).utc.iso8601
+    ' "$commit"
+)
+epoch=$(ruby -rtime -e 'print Time.iso8601(ARGV.fetch(0)).to_i' "$created")
+
+source_url="https://codeload.github.com/redmine/redmine/tar.gz/$commit"
+archive=$tmp/redmine.tar.gz
+curl \
+  --fail-with-body \
+  --silent \
+  --show-error \
+  --location \
+  --retry 3 \
+  --retry-all-errors \
+  --connect-timeout 10 \
+  --max-time 300 \
+  --output "$archive" \
+  "$source_url"
+source_sha256=$(ruby -rdigest -e \
+  'print Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$archive")
+
+case $base in
+  *[/]*) inspect_reference="docker://$base" ;;
+  *) inspect_reference="docker://docker.io/library/$base" ;;
+esac
+raw_manifest=$(run_skopeo inspect --raw "$inspect_reference")
+base_digest=$(
+  printf '%s' "$raw_manifest" |
+    ruby -rjson -rdigest -e '
+      raw = STDIN.read
+      value = JSON.parse(raw)
+      if value["manifests"]
+        descriptor = value.fetch("manifests").find do |candidate|
+          candidate.dig("platform", "os") == "linux" &&
+            candidate.dig("platform", "architecture") == "amd64" &&
+            [nil, ""].include?(candidate.dig("platform", "variant"))
+        end
+        abort "base index has no linux/amd64 manifest" unless descriptor
+        print descriptor.fetch("digest")
+      else
+        print "sha256:#{Digest::SHA256.hexdigest(raw)}"
+      end
+    '
+)
+resolved_base="$base@$base_digest"
+
+output_dir=$(dirname "$output")
+mkdir -p "$output_dir"
+temporary_output=$output_dir/.resolution.$$
+ruby -rjson -e '
+  path, commit, url, checksum, epoch, created, base = ARGV
+  value = {
+    "profile" => "trunk",
+    "source_commit" => commit,
+    "source_url" => url,
+    "source_sha256" => checksum,
+    "source_date_epoch" => Integer(epoch, 10),
+    "created" => created,
+    "builder_base" => base,
+    "runtime_base" => base
+  }
+  File.write(path, "#{JSON.pretty_generate(value)}\n")
+' "$temporary_output" "$commit" "$source_url" "$source_sha256" \
+  "$epoch" "$created" "$resolved_base"
+mv "$temporary_output" "$output"
+
+printf 'trunk resolution: PASS commit=%s base=%s\n' "$commit" "$resolved_base"

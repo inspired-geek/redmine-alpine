@@ -1,0 +1,11 @@
+{
+  "description": "one Bundler version cannot resolve to different gem artifacts",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/profiles/2/bundler_gem_sha256",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "expected": "Bundler 2.4.20 must use one gem SHA-256 across profiles"
+}

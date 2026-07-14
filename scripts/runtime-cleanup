@@ -1,0 +1,155 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  printf 'usage: %s BUNDLE_ROOT APP_ROOT\n' "$0" >&2
+  exit 64
+}
+
+[ "$#" -eq 2 ] || usage
+bundle_input=$1
+app_input=$2
+
+case $bundle_input in
+  ''|/) usage ;;
+esac
+case $app_input in
+  ''|/) usage ;;
+esac
+[ -d "$bundle_input/gems" ] || {
+  printf 'ERROR: bundle gems directory is missing: %s\n' "$bundle_input/gems" >&2
+  exit 66
+}
+[ -d "$app_input" ] || {
+  printf 'ERROR: application directory is missing: %s\n' "$app_input" >&2
+  exit 66
+}
+
+bundle=$(CDPATH= cd -- "$bundle_input" && pwd -P)
+app=$(CDPATH= cd -- "$app_input" && pwd -P)
+
+is_protected() {
+  candidate=$1
+  for keep in ${RUNTIME_CLEANUP_KEEP_PATHS:-}; do
+    case $keep in
+      /*) ;;
+      *)
+        printf 'ERROR: cleanup keep path must be absolute: %s\n' "$keep" >&2
+        exit 64
+        ;;
+    esac
+    keep_name=${keep##*/}
+    keep_parent=${keep%/*}
+    [ -n "$keep_parent" ] || keep_parent=/
+    if [ -d "$keep_parent" ]; then
+      keep_parent=$(CDPATH= cd -- "$keep_parent" && pwd -P)
+      keep=$keep_parent/$keep_name
+    fi
+    case $candidate in
+      "$keep"|"$keep"/*) return 0 ;;
+    esac
+    case $keep in
+      "$candidate"/*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+remove_tree() {
+  target=$1
+  [ ! -e "$target" ] || is_protected "$target" || rm -rf -- "$target"
+}
+
+remove_file() {
+  target=$1
+  [ ! -e "$target" ] || is_protected "$target" || rm -f -- "$target"
+}
+
+for target in \
+  "$bundle/cache" \
+  "$bundle/doc" \
+  "$bundle/build_info"
+do
+  remove_tree "$target"
+done
+
+for gem in "$bundle"/gems/*; do
+  [ -d "$gem" ] || continue
+  for name in \
+    .bundle \
+    .github \
+    benchmark \
+    benchmarks \
+    coverage \
+    doc \
+    docs \
+    example \
+    examples \
+    ext \
+    features \
+    pkg \
+    ports \
+    spec \
+    test \
+    tests
+  do
+    remove_tree "$gem/$name"
+  done
+done
+
+ruby_series=$(ruby -rrbconfig -e '
+  print RbConfig::CONFIG.fetch("ruby_version").split(".").first(2).join(".")
+')
+case $ruby_series in
+  [0-9].[0-9]) ;;
+  *)
+    printf 'ERROR: unsupported Ruby ABI series: %s\n' "$ruby_series" >&2
+    exit 64
+    ;;
+esac
+
+contains_shared_object() {
+  find "$1" -type f -name '*.so' -print | grep -q .
+}
+
+for gem in "$bundle"/gems/*; do
+  [ -d "$gem" ] || continue
+  for abi_dir in "$gem"/lib/*/[0-9].[0-9]; do
+    [ -d "$abi_dir" ] || continue
+    parent=${abi_dir%/*}
+    active_abi_dir=$parent/$ruby_series
+    [ "$abi_dir" != "$active_abi_dir" ] || continue
+    [ -d "$active_abi_dir" ] || continue
+    contains_shared_object "$active_abi_dir" || continue
+    contains_shared_object "$abi_dir" || continue
+    remove_tree "$abi_dir"
+  done
+done
+
+find "$bundle" -type f \
+  \( -name '*.a' -o -name '*.la' -o -name '*.lo' -o -name '*.o' \
+     -o -name Makefile -o -name gem_make.out -o -name mkmf.log \) \
+  -print |
+while IFS= read -r target; do
+  remove_file "$target"
+done
+
+for target in \
+  "$app/test" \
+  "$app/doc" \
+  "$app/.bundle/cache" \
+  "$app/tmp/cache" \
+  "$app/files/delete.me" \
+  "$app/log/delete.me"
+do
+  remove_tree "$target"
+done
+
+home=${HOME:-/root}
+cargo=${CARGO_HOME:-$home/.cargo}
+remove_tree "$home/.bundle/cache"
+remove_tree "$cargo/registry"
+remove_tree "$cargo/git"
+remove_tree "$cargo/target"
+
+printf 'runtime cleanup: PASS bundle=%s app=%s\n' "$bundle" "$app"

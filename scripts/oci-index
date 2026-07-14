@@ -1,0 +1,451 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "rubygems/package"
+require "time"
+require "tmpdir"
+require_relative "lib/image_catalog"
+
+module OCIIndex
+  class Error < StandardError; end
+  class UsageError < Error; end
+
+  IMAGE_INDEX = "application/vnd.oci.image.index.v1+json"
+  IMAGE_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
+  IMAGE_CONFIG = "application/vnd.oci.image.config.v1+json"
+  GZIP_LAYER = "application/vnd.oci.image.layer.v1.tar+gzip"
+  ZSTD_LAYER = "application/vnd.oci.image.layer.v1.tar+zstd"
+  ZSTD_MARKER = "io.github.containers.compression.zstd"
+  ZSTD_CHUNK_ANNOTATIONS = %w[
+    io.github.containers.zstd-chunked.manifest-checksum
+    io.github.containers.zstd-chunked.manifest-position
+    io.github.containers.zstd-chunked.tarsplit-position
+  ].freeze
+  SHA256 = /\Asha256:([0-9a-f]{64})\z/.freeze
+  LOWER_COMMIT = /\A[0-9a-f]{40}\z/.freeze
+
+  Image = Struct.new(
+    :descriptor,
+    :manifest,
+    :config_descriptor,
+    :config,
+    :blob_paths,
+    keyword_init: true
+  )
+
+  module_function
+
+  def usage!
+    raise UsageError,
+          "usage: oci-index PROFILE --gzip-archive FILE " \
+          "--zstd-chunked-archive FILE --output FILE [--resolution FILE]"
+  end
+
+  def parse_arguments(arguments)
+    usage! if arguments.empty?
+    profile_id = arguments.shift
+    options = {}
+
+    until arguments.empty?
+      option = arguments.shift
+      case option
+      when "--gzip-archive"
+        options[:gzip_archive] = arguments.shift || usage!
+      when "--zstd-chunked-archive"
+        options[:zstd_archive] = arguments.shift || usage!
+      when "--output"
+        options[:output] = arguments.shift || usage!
+      when "--resolution"
+        options[:resolution] = arguments.shift || usage!
+      else
+        usage!
+      end
+    end
+
+    %i[gzip_archive zstd_archive output].each do |key|
+      usage! unless options.key?(key) && !options.fetch(key).empty?
+    end
+    [profile_id, options]
+  end
+
+  def safe_archive_name!(raw_name)
+    name = raw_name.sub(%r{\A(?:\./)+}, "")
+    if name.empty? || name.start_with?("/") || name.include?("\0") ||
+       name.split("/").include?("..")
+      raise Error, "unsafe OCI archive member #{raw_name.inspect}"
+    end
+    name
+  end
+
+  def extract_archive(archive, destination)
+    raise Error, "OCI archive not found: #{archive}" unless File.file?(archive)
+
+    root = File.expand_path(destination)
+    File.open(archive, "rb") do |file|
+      Gem::Package::TarReader.new(file) do |tar|
+        tar.each do |entry|
+          name = safe_archive_name!(entry.full_name)
+          path = File.expand_path(name, root)
+          unless path.start_with?("#{root}/")
+            raise Error, "OCI archive member escapes extraction root: #{name.inspect}"
+          end
+
+          if entry.directory?
+            FileUtils.mkdir_p(path)
+          elsif entry.file?
+            FileUtils.mkdir_p(File.dirname(path))
+            File.open(path, "wb", 0o644) { |output| IO.copy_stream(entry, output) }
+          else
+            raise Error, "unsupported OCI archive member type: #{name.inspect}"
+          end
+        end
+      end
+    end
+  rescue Gem::Package::TarInvalidError, EOFError => error
+    raise Error, "invalid OCI archive #{archive}: #{error.message}"
+  end
+
+  def parse_json_file(path, description)
+    JSON.parse(File.binread(path))
+  rescue Errno::ENOENT
+    raise Error, "#{description} is missing"
+  rescue JSON::ParserError => error
+    raise Error, "invalid #{description}: #{error.message}"
+  end
+
+  def validate_layout!(root)
+    layout = parse_json_file(File.join(root, "oci-layout"), "oci-layout")
+    unless layout == {"imageLayoutVersion" => "1.0.0"}
+      raise Error, "unsupported OCI layout version"
+    end
+  end
+
+  def descriptor_blob(root, descriptor, description)
+    digest = descriptor.fetch("digest")
+    match = SHA256.match(digest)
+    raise Error, "#{description} does not use a full sha256 digest" unless match
+
+    path = File.join(root, "blobs", "sha256", match[1])
+    raise Error, "#{description} blob is missing: #{digest}" unless File.file?(path)
+
+    size = descriptor.fetch("size")
+    unless size.is_a?(Integer) && size >= 0 && File.size(path) == size
+      raise Error, "#{description} size does not match #{digest}"
+    end
+    unless Digest::SHA256.file(path).hexdigest == match[1]
+      raise Error, "#{description} digest does not match #{digest}"
+    end
+    [path, File.binread(path)]
+  rescue KeyError => error
+    raise Error, "#{description} is missing #{error.key.inspect}"
+  end
+
+  def parse_json_blob(contents, description)
+    JSON.parse(contents)
+  rescue JSON::ParserError => error
+    raise Error, "invalid #{description}: #{error.message}"
+  end
+
+  def validate_schema!(document, media_type, description)
+    unless document.fetch("schemaVersion") == 2 &&
+           document.fetch("mediaType") == media_type
+      raise Error, "#{description} is not #{media_type} schemaVersion 2"
+    end
+  rescue KeyError => error
+    raise Error, "#{description} is missing #{error.key.inspect}"
+  end
+
+  def validate_zstd_annotations!(layer)
+    annotations = layer.fetch("annotations")
+    missing = ZSTD_CHUNK_ANNOTATIONS - annotations.keys
+    unless missing.empty?
+      raise Error, "zstd layer is not seekable zstd:chunked; missing #{missing.join(', ')}"
+    end
+    unless SHA256.match?(annotations.fetch(ZSTD_CHUNK_ANNOTATIONS.fetch(0)))
+      raise Error, "invalid zstd:chunked manifest checksum"
+    end
+    unless annotations.fetch(ZSTD_CHUNK_ANNOTATIONS.fetch(1)).match?(/\A\d+(?::\d+){3}\z/) &&
+           annotations.fetch(ZSTD_CHUNK_ANNOTATIONS.fetch(2)).match?(/\A\d+(?::\d+){2}\z/)
+      raise Error, "invalid zstd:chunked range annotations"
+    end
+  rescue KeyError
+    raise Error, "zstd layer annotations must be an object"
+  end
+
+  def load_image(root, compression)
+    validate_layout!(root)
+    index = parse_json_file(File.join(root, "index.json"), "OCI layout index")
+    validate_schema!(index, IMAGE_INDEX, "OCI layout index")
+    descriptors = index.fetch("manifests")
+    unless descriptors.is_a?(Array) && descriptors.length == 1
+      raise Error, "input OCI archive must contain exactly one image manifest"
+    end
+
+    descriptor = descriptors.first
+    unless descriptor.fetch("mediaType") == IMAGE_MANIFEST
+      raise Error, "input OCI archive entry is not an image manifest"
+    end
+    manifest_path, manifest_contents = descriptor_blob(root, descriptor, "image manifest")
+    manifest = parse_json_blob(manifest_contents, "image manifest")
+    validate_schema!(manifest, IMAGE_MANIFEST, "image manifest")
+
+    config_descriptor = manifest.fetch("config")
+    unless config_descriptor.fetch("mediaType") == IMAGE_CONFIG
+      raise Error, "image config has an unsupported media type"
+    end
+    config_path, config_contents = descriptor_blob(root, config_descriptor, "image config")
+    config = parse_json_blob(config_contents, "image config")
+
+    expected_layer_type = compression == :gzip ? GZIP_LAYER : ZSTD_LAYER
+    layers = manifest.fetch("layers")
+    raise Error, "image manifest has no layers" unless layers.is_a?(Array) && !layers.empty?
+    layer_paths = layers.map.with_index do |layer, index_number|
+      unless layer.fetch("mediaType") == expected_layer_type
+        raise Error, "#{compression} archive layer #{index_number} has the wrong media type"
+      end
+      validate_zstd_annotations!(layer) if compression == :zstd_chunked
+      descriptor_blob(root, layer, "layer #{index_number}").first
+    end
+
+    diff_ids = config.dig("rootfs", "diff_ids")
+    unless diff_ids.is_a?(Array) && diff_ids.length == layers.length &&
+           diff_ids.all? { |digest| SHA256.match?(digest) }
+      raise Error, "image config rootfs diff_ids do not match the layer count"
+    end
+
+    Image.new(
+      descriptor: descriptor,
+      manifest: manifest,
+      config_descriptor: config_descriptor,
+      config: config,
+      blob_paths: [manifest_path, config_path] + layer_paths
+    )
+  rescue KeyError => error
+    raise Error, "input OCI image is missing #{error.key.inspect}"
+  end
+
+  def platform_for(profile, config)
+    platforms = profile.fetch("platforms")
+    unless platforms.is_a?(Array) && platforms.length == 1
+      raise Error, "profile must define exactly one platform"
+    end
+    expected_os, expected_architecture = platforms.first.split("/", 2)
+    actual = {
+      "architecture" => config.fetch("architecture"),
+      "os" => config.fetch("os")
+    }
+    actual["variant"] = config.fetch("variant") if config.key?("variant")
+    unless actual.fetch("os") == expected_os &&
+           actual.fetch("architecture") == expected_architecture
+      raise Error, "image platform contradicts profile #{profile.fetch('id')}"
+    end
+    actual
+  rescue KeyError => error
+    raise Error, "image config is missing #{error.key.inspect}"
+  end
+
+  def metadata_for(profile, config)
+    labels = config.dig("config", "Labels")
+    raise Error, "image config labels are missing" unless labels.is_a?(Hash)
+
+    metadata = profile.fetch("oci").each_with_object({}) do |(key, expected), result|
+      label = "org.opencontainers.image.#{key}"
+      actual = labels.fetch(label)
+      unless actual == expected
+        raise Error, "image label #{label} contradicts profile #{profile.fetch('id')}"
+      end
+      result[label] = actual
+    end
+    created = labels.fetch("org.opencontainers.image.created")
+    expected_created = Time.at(profile.dig("source", "source_date_epoch")).utc.iso8601
+    unless created == expected_created
+      raise Error, "image created annotation contradicts the resolved source epoch"
+    end
+    revision = labels.fetch("org.opencontainers.image.revision")
+    raise Error, "image revision is not a full lowercase commit" unless LOWER_COMMIT.match?(revision)
+    metadata["org.opencontainers.image.created"] = created
+    metadata["org.opencontainers.image.revision"] = revision
+    metadata
+  rescue KeyError => error
+    raise Error, "image config labels are missing #{error.key.inspect}"
+  end
+
+  def copy_blob(source, blob_root)
+    digest = File.basename(source)
+    unless digest.match?(/\A[0-9a-f]{64}\z/) && Digest::SHA256.file(source).hexdigest == digest
+      raise Error, "invalid source blob #{source}"
+    end
+    destination = File.join(blob_root, digest)
+    if File.exist?(destination)
+      unless File.size(destination) == File.size(source) &&
+             Digest::SHA256.file(destination).hexdigest == digest
+        raise Error, "conflicting blob #{digest}"
+      end
+    else
+      FileUtils.cp(source, destination)
+      File.chmod(0o644, destination)
+    end
+  end
+
+  def write_blob(blob_root, contents)
+    digest = Digest::SHA256.hexdigest(contents)
+    path = File.join(blob_root, digest)
+    File.binwrite(path, contents)
+    File.chmod(0o644, path)
+    {
+      "mediaType" => IMAGE_INDEX,
+      "digest" => "sha256:#{digest}",
+      "size" => contents.bytesize
+    }
+  end
+
+  def descriptor_for(image, platform, metadata, zstd: false)
+    annotations = metadata.dup
+    annotations[ZSTD_MARKER] = "true" if zstd
+    {
+      "mediaType" => IMAGE_MANIFEST,
+      "digest" => image.descriptor.fetch("digest"),
+      "size" => image.descriptor.fetch("size"),
+      "annotations" => annotations,
+      "platform" => platform
+    }
+  end
+
+  def write_archive(layout_root, output, source_date_epoch)
+    output_directory = File.dirname(File.expand_path(output))
+    FileUtils.mkdir_p(output_directory)
+    FileUtils.rm_f(output)
+    temporary = File.join(
+      output_directory,
+      ".#{File.basename(output)}.tmp-#{Process.pid}"
+    )
+    FileUtils.rm_f(temporary)
+
+    previous_epoch = ENV["SOURCE_DATE_EPOCH"]
+    ENV["SOURCE_DATE_EPOCH"] = source_date_epoch.to_s
+    File.open(temporary, "wb", 0o644) do |file|
+      Gem::Package::TarWriter.new(file) do |tar|
+        Dir.chdir(layout_root) do
+          Dir.glob("**/*", File::FNM_DOTMATCH).sort.each do |name|
+            next if name == "." || name == ".." || File.directory?(name)
+
+            size = File.size(name)
+            tar.add_file_simple(name, 0o644, size) do |entry|
+              File.open(name, "rb") { |source| IO.copy_stream(source, entry) }
+            end
+          end
+        end
+      end
+    end
+    File.rename(temporary, output)
+    File.chmod(0o644, output)
+  ensure
+    ENV["SOURCE_DATE_EPOCH"] = previous_epoch
+    FileUtils.rm_f(temporary) if defined?(temporary) && temporary
+  end
+
+  def create(profile, gzip_archive, zstd_archive, output)
+    output_path = File.expand_path(output)
+    input_paths = [gzip_archive, zstd_archive].map { |path| File.expand_path(path) }
+    raise Error, "output archive must differ from both inputs" if input_paths.include?(output_path)
+    FileUtils.rm_f(output_path)
+
+    Dir.mktmpdir("redmine-oci-index-") do |temporary_root|
+      gzip_root = File.join(temporary_root, "gzip")
+      zstd_root = File.join(temporary_root, "zstd")
+      output_root = File.join(temporary_root, "output")
+      [gzip_root, zstd_root, output_root].each { |path| FileUtils.mkdir_p(path) }
+      extract_archive(gzip_archive, gzip_root)
+      extract_archive(zstd_archive, zstd_root)
+
+      gzip = load_image(gzip_root, :gzip)
+      zstd = load_image(zstd_root, :zstd_chunked)
+      unless gzip.config_descriptor == zstd.config_descriptor
+        raise Error, "gzip and zstd:chunked config descriptors differ"
+      end
+      unless gzip.config == zstd.config
+        raise Error, "gzip and zstd:chunked image configs differ"
+      end
+
+      platform = platform_for(profile, gzip.config)
+      metadata = metadata_for(profile, gzip.config)
+      blob_root = File.join(output_root, "blobs", "sha256")
+      FileUtils.mkdir_p(blob_root)
+      (gzip.blob_paths + zstd.blob_paths).each do |source|
+        copy_blob(source, blob_root)
+      end
+
+      inner_index = JSON.generate(
+        "schemaVersion" => 2,
+        "mediaType" => IMAGE_INDEX,
+        "manifests" => [
+          descriptor_for(gzip, platform, metadata),
+          descriptor_for(zstd, platform, metadata, zstd: true)
+        ],
+        "annotations" => metadata
+      )
+      root_descriptor = write_blob(blob_root, inner_index)
+      root_descriptor["annotations"] = metadata.merge(
+        "org.opencontainers.image.ref.name" => profile.fetch("id")
+      )
+      File.binwrite(
+        File.join(output_root, "index.json"),
+        JSON.generate(
+          "schemaVersion" => 2,
+          "mediaType" => IMAGE_INDEX,
+          "manifests" => [root_descriptor]
+        )
+      )
+      File.binwrite(
+        File.join(output_root, "oci-layout"),
+        JSON.generate("imageLayoutVersion" => "1.0.0")
+      )
+
+      write_archive(
+        output_root,
+        output_path,
+        profile.dig("source", "source_date_epoch")
+      )
+      root_descriptor.fetch("digest")
+    end
+  rescue SystemCallError => error
+    FileUtils.rm_f(output_path) if defined?(output_path) && output_path
+    raise Error, error.message
+  rescue Error
+    FileUtils.rm_f(output_path) if defined?(output_path) && output_path
+    raise
+  end
+end
+
+if __FILE__ == $PROGRAM_NAME
+  begin
+    profile_id, options = OCIIndex.parse_arguments(ARGV)
+    root = File.expand_path("..", __dir__)
+    catalog_path = ENV.fetch("IMAGE_CATALOG", File.join(root, "build", "images.json"))
+    schema_path = File.join(root, "build", "images.schema.json")
+    catalog = ImageCatalog::Catalog.load(
+      catalog_path: catalog_path,
+      schema_path: schema_path
+    )
+    resolution = if options[:resolution]
+                   ImageCatalog::Catalog.load_resolution(options.fetch(:resolution))
+                 end
+    profile = catalog.profile(profile_id, resolution: resolution)
+    digest = OCIIndex.create(
+      profile,
+      options.fetch(:gzip_archive),
+      options.fetch(:zstd_archive),
+      options.fetch(:output)
+    )
+    puts "OCI index: PASS profile=#{profile_id} digest=#{digest}"
+  rescue OCIIndex::UsageError, ImageCatalog::UsageError => error
+    warn "oci-index: #{error.message}"
+    exit 64
+  rescue OCIIndex::Error, ImageCatalog::Error => error
+    warn "oci-index: ERROR #{error.message}"
+    exit 1
+  end
+end

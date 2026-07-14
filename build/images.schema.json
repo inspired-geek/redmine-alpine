@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/inspired-geek/redmine-alpine/build/images.schema.json",
+  "title": "Redmine Alpine image profile catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tool_policy", "profiles"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "tool_policy": {"$ref": "#/$defs/tool_policy"},
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/profile"}
+    }
+  },
+  "$defs": {
+    "tool_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_base",
+        "toolchain",
+        "registry_tool",
+        "test_images",
+        "compression"
+      ],
+      "properties": {
+        "source_base": {"type": "string", "minLength": 1},
+        "toolchain": {"type": "string", "minLength": 1},
+        "registry_tool": {"type": "string", "minLength": 1},
+        "test_images": {"$ref": "#/$defs/test_images"},
+        "compression": {"$ref": "#/$defs/compression"}
+      }
+    },
+    "test_images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mariadb", "registry"],
+      "properties": {
+        "mariadb": {"type": "string", "minLength": 1},
+        "registry": {"type": "string", "minLength": 1}
+      }
+    },
+    "compression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gzip_level",
+        "zstd_candidates",
+        "benchmark_runs",
+        "selected_zstd_level"
+      ],
+      "properties": {
+        "gzip_level": {"type": "integer", "minimum": 1},
+        "zstd_candidates": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1}
+        },
+        "benchmark_runs": {"type": "integer", "minimum": 1},
+        "selected_zstd_level": {"type": "integer", "minimum": 1}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "platforms",
+        "redmine_version",
+        "source",
+        "base",
+        "ruby",
+        "bundler_version",
+        "bundler_gem_sha256",
+        "force_ruby_platform",
+        "puma_version",
+        "packages",
+        "compatibility_gems",
+        "runtime_checks",
+        "tags",
+        "oci",
+        "size_budgets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["3.4", "4.0", "4.1", "4.2", "5.0", "trunk", "5.1", "6.0", "6.1", "7.0"]
+        },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "enum": ["linux/amd64"]}
+        },
+        "redmine_version": {
+          "type": "string",
+          "pattern": "^(trunk|[0-9]+\\.[0-9]+\\.[0-9]+)$"
+        },
+        "source": {"$ref": "#/$defs/source"},
+        "base": {"$ref": "#/$defs/base"},
+        "ruby": {"$ref": "#/$defs/ruby"},
+        "bundler_version": {"$ref": "#/$defs/version"},
+        "bundler_gem_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "force_ruby_platform": {"type": "boolean"},
+        "puma_version": {"$ref": "#/$defs/version"},
+        "mariadb_connector": {"$ref": "#/$defs/mariadb_connector"},
+        "packages": {"$ref": "#/$defs/packages"},
+        "compatibility_gems": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/compatibility_gem"}
+        },
+        "runtime_checks": {"$ref": "#/$defs/runtime_checks"},
+        "tags": {"$ref": "#/$defs/tags"},
+        "oci": {"$ref": "#/$defs/oci"},
+        "size_budgets": {"$ref": "#/$defs/size_budgets"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {"type": "string", "enum": ["release_archive", "git_archive"]},
+        "url": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "source_date_epoch": {"type": "integer", "minimum": 1},
+        "repository": {"type": "string", "minLength": 1},
+        "ref": {"type": "string", "pattern": "^refs/heads/[A-Za-z0-9._/-]+$"}
+      }
+    },
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference"],
+      "properties": {
+        "reference": {"type": "string", "minLength": 1}
+      }
+    },
+    "ruby": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "install_mode"],
+      "properties": {
+        "version": {"$ref": "#/$defs/version"},
+        "install_mode": {"type": "string", "enum": ["alpine_package", "base_image"]}
+      }
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "mariadb_connector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "source_url", "source_sha256"],
+      "properties": {
+        "version": {"$ref": "#/$defs/version"},
+        "source_url": {
+          "type": "string",
+          "pattern": "^https://codeload\\.github\\.com/mariadb-corporation/mariadb-connector-c/tar\\.gz/[0-9a-f]{40}$"
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "package_array": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9+_.@-]*$"}
+    },
+    "packages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feature", "runtime", "build"],
+      "properties": {
+        "feature": {"$ref": "#/$defs/package_array"},
+        "runtime": {"$ref": "#/$defs/package_array"},
+        "build": {"$ref": "#/$defs/package_array"}
+      }
+    },
+    "compatibility_gem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "requirement"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+        "requirement": {
+          "type": ["string", "null"],
+          "pattern": "^(~>|=)?[0-9]+(\\.[0-9]+)*$"
+        },
+        "force_ruby_platform": {"const": true}
+      }
+    },
+    "runtime_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commands", "requires", "paths", "cleanup_keep_paths"],
+      "properties": {
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9+_.-]*$"}
+        },
+        "requires": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"}
+        },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^/[A-Za-z0-9._/-]+$"}
+        },
+        "cleanup_keep_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^/[A-Za-z0-9._/-]+$"}
+        }
+      }
+    },
+    "tag_array": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^(trunk|[0-9]+\\.[0-9]+(\\.[0-9]+)?)$"}
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["moving", "immutable"],
+      "properties": {
+        "moving": {"$ref": "#/$defs/tag_array"},
+        "immutable": {"$ref": "#/$defs/tag_array"}
+      }
+    },
+    "oci": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authors",
+        "source",
+        "url",
+        "documentation",
+        "licenses",
+        "title",
+        "version",
+        "description"
+      ],
+      "properties": {
+        "authors": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "url": {"type": "string", "minLength": 1},
+        "documentation": {"type": "string", "minLength": 1},
+        "licenses": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1}
+      }
+    },
+    "size_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rootfs_bytes", "gzip_bytes", "zstd_chunked_bytes"],
+      "properties": {
+        "rootfs_bytes": {"type": "integer", "minimum": 1},
+        "gzip_bytes": {"type": "integer", "minimum": 1},
+        "zstd_chunked_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "size_budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "linux/amd64": {"$ref": "#/$defs/size_budget"}
+      }
+    }
+  }
+}

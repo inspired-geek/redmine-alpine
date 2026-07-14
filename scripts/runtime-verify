@@ -1,0 +1,239 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  printf 'usage: %s elf|contract\n' "$0" >&2
+  exit 64
+}
+
+[ "$#" -eq 1 ] || usage
+mode=$1
+case $mode in
+  elf|contract) ;;
+  *) usage ;;
+esac
+
+fail() {
+  printf 'ERROR: runtime verification failed: %s\n' "$*" >&2
+  exit 1
+}
+
+root=${RUNTIME_VERIFY_ROOT:-/}
+case $root in
+  /*) ;;
+  *) fail "RUNTIME_VERIFY_ROOT must be absolute: $root" ;;
+esac
+if [ "$root" != / ]; then
+  root=${root%/}
+fi
+
+root_path() {
+  if [ "$root" = / ]; then
+    printf '%s\n' "$1"
+  else
+    printf '%s%s\n' "$root" "$1"
+  fi
+}
+
+is_cleanup_exception() {
+  candidate=$1
+  for keep in ${RUNTIME_CLEANUP_KEEP_PATHS:-}; do
+    case $candidate in
+      "$keep"|"$keep"/*) return 0 ;;
+    esac
+    case $keep in
+      "$candidate"/*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+if [ "$mode" = elf ]; then
+  scanelf=${SCANELF:-scanelf}
+  ldd=${LDD:-ldd}
+  elf_list=$(mktemp)
+  ldd_output=$(mktemp)
+  cleanup() {
+    rm -f "$elf_list" "$ldd_output"
+  }
+  trap cleanup EXIT HUP INT TERM
+
+  ruby_host_relocations_only() {
+    object=$1
+    output=$2
+    bundle_root=$(root_path /usr/local/bundle)
+    case $object in
+      "$bundle_root"/*.so) ;;
+      *) return 1 ;;
+    esac
+    awk '
+      /Error relocating / {
+        found = 1
+        if ($0 !~ /: (rb_|ruby_)[A-Za-z0-9_]*: symbol not found$/) {
+          invalid = 1
+        }
+      }
+      END { exit(found && !invalid ? 0 : 1) }
+    ' "$output"
+  }
+
+  set --
+  for directory in /bin /sbin /lib /usr /opt; do
+    candidate=$(root_path "$directory")
+    [ ! -e "$candidate" ] || set -- "$@" "$candidate"
+  done
+  [ "$#" -gt 0 ] || fail "no runtime directories found below $root"
+
+  "$scanelf" \
+    --recursive \
+    --mount \
+    --nobanner \
+    --needed \
+    --format '%F;%n' \
+    "$@" >"$elf_list" || fail "scanelf failed below $root"
+  grep -F ';' "$elf_list" >/dev/null || fail "scanelf found no ELF objects"
+
+  while IFS=';' read -r object needed; do
+    [ -n "$object" ] || fail "scanelf emitted an empty object path"
+    [ -n "$needed" ] || continue
+    ldd_status=0
+    "$ldd" "$object" >"$ldd_output" 2>&1 || ldd_status=$?
+    if grep -E '=>[[:space:]]+not found|Error loading shared library' \
+      "$ldd_output" >/dev/null; then
+      cat "$ldd_output" >&2
+      fail "unresolved ELF dependency: $object"
+    fi
+    if grep -F 'Error relocating ' "$ldd_output" >/dev/null; then
+      if ruby_host_relocations_only "$object" "$ldd_output"; then
+        continue
+      fi
+      cat "$ldd_output" >&2
+      fail "unresolved ELF dependency: $object"
+    fi
+    if [ "$ldd_status" -ne 0 ]; then
+      cat "$ldd_output" >&2
+      fail "unresolved ELF dependency: $object"
+    fi
+  done <"$elf_list"
+
+  printf 'runtime ELF verification: PASS root=%s\n' "$root"
+  exit 0
+fi
+
+: "${EXPECTED_BUNDLER_VERSION:?EXPECTED_BUNDLER_VERSION is required}"
+: "${EXPECTED_PUMA_VERSION:?EXPECTED_PUMA_VERSION is required}"
+: "${EXPECTED_REDMINE_VERSION:?EXPECTED_REDMINE_VERSION is required}"
+: "${EXPECTED_RUBY_VERSION:?EXPECTED_RUBY_VERSION is required}"
+: "${BUILD_PACKAGES:?BUILD_PACKAGES is required}"
+: "${FEATURE_PACKAGES:?FEATURE_PACKAGES is required}"
+: "${RUNTIME_PACKAGES:?RUNTIME_PACKAGES is required}"
+: "${RUNTIME_COMMANDS:?RUNTIME_COMMANDS is required}"
+: "${RUNTIME_PATHS:?RUNTIME_PATHS is required}"
+: "${RUNTIME_REQUIRES:?RUNTIME_REQUIRES is required}"
+
+for command in $RUNTIME_COMMANDS; do
+  command -v "$command" >/dev/null 2>&1 || fail "missing command: $command"
+done
+
+ruby=${RUBY:-ruby}
+version_file=$(root_path /usr/src/redmine/lib/redmine/version.rb)
+"$ruby" -e '
+  expected_ruby = ARGV.shift
+  expected_bundler = ARGV.shift
+  expected_redmine = ARGV.shift
+  expected_puma = ARGV.shift
+  expected_mariadb_connector = ARGV.shift
+  version_file = ARGV.shift
+  abort "Ruby version: expected #{expected_ruby}, got #{RUBY_VERSION}" unless
+    RUBY_VERSION == expected_ruby
+  require "bundler"
+  ARGV.each { |library| require library }
+  require "puma" unless Gem.loaded_specs.key?("puma")
+  parts = File.read(version_file).
+    scan(/^\s*(?:MAJOR|MINOR|TINY)\s*=\s*(\d+)/).flatten
+  actual_redmine = parts.join(".")
+  actual_puma = Gem.loaded_specs.fetch("puma").version.to_s
+  unless expected_mariadb_connector.empty?
+    actual_mariadb_connector = Mysql2::Client.info.fetch(:header_version)
+    unless actual_mariadb_connector == expected_mariadb_connector
+      abort "MariaDB Connector/C version: expected #{expected_mariadb_connector}, got #{actual_mariadb_connector}"
+    end
+  end
+  abort "Bundler version: expected #{expected_bundler}, got #{Bundler::VERSION}" unless
+    Bundler::VERSION == expected_bundler
+  redmine_matches = if expected_redmine == "trunk"
+                      actual_redmine.match?(/\A\d+\.\d+\.\d+\z/)
+                    else
+                      actual_redmine == expected_redmine
+                    end
+  abort "Redmine version: expected #{expected_redmine}, got #{actual_redmine}" unless
+    redmine_matches
+  abort "Puma version: expected #{expected_puma}, got #{actual_puma}" unless
+    actual_puma == expected_puma
+' \
+  "$EXPECTED_RUBY_VERSION" \
+  "$EXPECTED_BUNDLER_VERSION" \
+  "$EXPECTED_REDMINE_VERSION" \
+  "$EXPECTED_PUMA_VERSION" \
+  "${EXPECTED_MARIADB_CONNECTOR_VERSION:-}" \
+  "$version_file" \
+  $RUNTIME_REQUIRES || fail "Ruby, Redmine, Bundler, Puma, or native-gem contract"
+
+for path in $RUNTIME_PATHS; do
+  candidate=$(root_path "$path")
+  [ -e "$candidate" ] || fail "missing required path: $path"
+done
+
+bundle=$(root_path /usr/local/bundle)
+app=$(root_path /usr/src/redmine)
+for residue in \
+  "$bundle/cache" \
+  "$bundle/doc" \
+  "$bundle/build_info" \
+  "$app/test" \
+  "$app/doc" \
+  "$app/.bundle/cache" \
+  "$app/tmp/cache" \
+  "$(root_path /root/.bundle/cache)" \
+  "$(root_path /root/.cargo/registry)" \
+  "$(root_path /root/.cargo/git)" \
+  "$(root_path /root/.cargo/target)"
+do
+  if [ -e "$residue" ] && ! is_cleanup_exception "$residue"; then
+    fail "forbidden build residue: $residue"
+  fi
+done
+
+for gem in "$bundle"/gems/*; do
+  [ -d "$gem" ] || continue
+  for name in \
+    .bundle .github benchmark benchmarks coverage doc docs example examples \
+    ext features pkg ports spec test tests
+  do
+    residue=$gem/$name
+    if [ -e "$residue" ] && ! is_cleanup_exception "$residue"; then
+      fail "forbidden gem build residue: $residue"
+    fi
+  done
+done
+
+find "$bundle" -type f \
+  \( -name '*.a' -o -name '*.la' -o -name '*.lo' -o -name '*.o' \
+     -o -name Makefile -o -name gem_make.out -o -name mkmf.log \) \
+  -print |
+while IFS= read -r residue; do
+  is_cleanup_exception "$residue" ||
+    fail "forbidden compiler output: $residue"
+done
+
+apk=${APK:-apk}
+for package in $BUILD_PACKAGES .build-deps .verify-deps; do
+  case " $FEATURE_PACKAGES $RUNTIME_PACKAGES " in
+    *" $package "*) continue ;;
+  esac
+  if "$apk" info -e "$package" >/dev/null 2>&1; then
+    fail "forbidden build package is installed: $package"
+  fi
+done
+
+printf 'runtime contract verification: PASS root=%s\n' "$root"

@@ -1,0 +1,11 @@
+{
+  "description": "per-gem Ruby-platform forcing is an opt-in flag and false is redundant",
+  "operations": [
+    {
+      "op": "add",
+      "path": "/profiles/7/compatibility_gems/0/force_ruby_platform",
+      "value": false
+    }
+  ],
+  "expected": "schema $.profiles[7].compatibility_gems[0].force_ruby_platform: must equal true"
+}

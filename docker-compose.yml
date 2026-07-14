@@ -1,34 +1,53 @@
-version: '3'
+---
+name: redmine-alpine
+
 services:
   redmine:
-    image: inspiredgeek/redmine-alpine:5.0
+    image: ghcr.io/inspired-geek/redmine-alpine:7.0
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?export SECRET_KEY_BASE first}
       DB_ADAPTER: mysql2
       DB_HOST: db
-      DB_PASSWORD: redmine
-      DB_USER: redmine
-      DB_NAME: redmine
+      DB_PORT: "3306"
+      DB_USER: ${DB_USER:-redmine}
+      DB_PASSWORD: ${DB_PASSWORD:?export DB_PASSWORD first}
+      DB_NAME: ${DB_NAME:-redmine}
+      RAILS_MAX_THREADS: ${RAILS_MAX_THREADS:-5}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - redmine-files:/usr/src/redmine/files
       - redmine-plugins:/usr/src/redmine/plugins
       - redmine-plugin-assets:/usr/src/redmine/public/plugin_assets
+      - redmine-assets:/usr/src/redmine/public/assets
       - redmine-themes:/usr/src/redmine/public/themes
-    depends_on:
-      - db
+
   db:
-    image: mariadb:latest
+    image: mariadb:11.8.8
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: redmine
-      MYSQL_DATABASE: redmine
-      MYSQL_USER: redmine
-      MYSQL_PASSWORD: redmine
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+      MARIADB_DATABASE: ${DB_NAME:-redmine}
+      MARIADB_USER: ${DB_USER:-redmine}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?export DB_PASSWORD first}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     volumes:
       - redmine-data:/var/lib/mysql
+
 volumes:
   redmine-files:
-  redmine-data:
   redmine-plugins:
   redmine-plugin-assets:
+  redmine-assets:
   redmine-themes:
+  redmine-data:

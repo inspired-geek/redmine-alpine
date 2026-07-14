@@ -1,0 +1,277 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  printf '%s\n' \
+    "usage: $0 PROFILE --index-archive FILE --image ghcr.io/OWNER/IMAGE" \
+    '       [--metrics FILE] [--resolution FILE]' >&2
+  exit 64
+}
+
+[ "$#" -gt 0 ] || usage
+profile_id=$1
+shift
+
+index_archive=
+image=
+metrics=
+resolution=
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --index-archive)
+      [ "$#" -ge 2 ] || usage
+      index_archive=$2
+      shift 2
+      ;;
+    --image)
+      [ "$#" -ge 2 ] || usage
+      image=$2
+      shift 2
+      ;;
+    --metrics)
+      [ "$#" -ge 2 ] || usage
+      metrics=$2
+      shift 2
+      ;;
+    --resolution)
+      [ "$#" -ge 2 ] || usage
+      resolution=$2
+      shift 2
+      ;;
+    *) usage ;;
+  esac
+done
+
+[ -n "$index_archive" ] && [ -n "$image" ] || usage
+if ! ruby -e '
+  reference = ARGV.fetch(0)
+  pattern = %r{\Aghcr\.io/[a-z0-9]+(?:[._-][a-z0-9]+)*/[a-z0-9]+(?:[._/-][a-z0-9]+)*\z}
+  exit(pattern.match?(reference) ? 0 : 1)
+' "$image"
+then
+  printf 'ERROR: unsupported GHCR image reference: %s\n' "$image" >&2
+  exit 64
+fi
+
+[ -s "$index_archive" ] || {
+  printf 'ERROR: OCI index archive is missing or empty: %s\n' "$index_archive" >&2
+  exit 66
+}
+archive_directory=$(CDPATH= cd -- "$(dirname "$index_archive")" && pwd -P)
+index_archive=$archive_directory/$(basename "$index_archive")
+if [ -z "$metrics" ]; then
+  metrics=$archive_directory/metrics.json
+fi
+[ -s "$metrics" ] || {
+  printf 'ERROR: image metrics are missing or empty: %s\n' "$metrics" >&2
+  exit 66
+}
+metrics_directory=$(CDPATH= cd -- "$(dirname "$metrics")" && pwd -P)
+metrics=$metrics_directory/$(basename "$metrics")
+
+root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd -P)
+set -- "$root/scripts/image-catalog" profile "$profile_id"
+if [ -n "$resolution" ]; then
+  set -- "$@" --resolution "$resolution"
+fi
+profile=$("$@")
+
+moving_tags=$(
+  printf '%s' "$profile" |
+    ruby -rjson -e 'puts JSON.parse(STDIN.read).dig("tags", "moving")'
+)
+immutable_tags=$(
+  printf '%s' "$profile" |
+    ruby -rjson -e 'puts JSON.parse(STDIN.read).dig("tags", "immutable")'
+)
+registry_tool=$(
+  ruby -rjson -e \
+    'print JSON.parse(File.read(ARGV.fetch(0))).dig("tool_policy", "registry_tool")' \
+    "$root/build/images.json"
+)
+
+expected_digest=$(
+  ruby -rtmpdir -rdigest -rjson -e '
+    indexer, archive, metrics_path, profile_id = ARGV
+    begin
+      load indexer
+      metrics = JSON.parse(File.read(metrics_path))
+      unless metrics.fetch("schema_version") == 1
+        raise OCIIndex::Error, "unsupported image metrics schema"
+      end
+      unless metrics.fetch("profile") == profile_id
+        raise OCIIndex::Error, "image metrics profile contradicts #{profile_id}"
+      end
+      measured_archive = metrics.fetch("archives").fetch("index")
+      unless measured_archive.fetch("bytes") == File.size(archive)
+        raise OCIIndex::Error, "index archive size contradicts metrics"
+      end
+      actual_archive_sha256 = Digest::SHA256.file(archive).hexdigest
+      unless measured_archive.fetch("sha256") == actual_archive_sha256
+        raise OCIIndex::Error, "index archive sha256 contradicts metrics"
+      end
+      Dir.mktmpdir("redmine-publish-index-") do |directory|
+        OCIIndex.extract_archive(archive, directory)
+        OCIIndex.validate_layout!(directory)
+        layout = OCIIndex.parse_json_file(
+          File.join(directory, "index.json"),
+          "OCI layout index"
+        )
+        OCIIndex.validate_schema!(layout, OCIIndex::IMAGE_INDEX, "OCI layout index")
+        descriptors = layout.fetch("manifests")
+        unless descriptors.is_a?(Array) && descriptors.length == 1 &&
+               descriptors.first.fetch("mediaType") == OCIIndex::IMAGE_INDEX
+          raise OCIIndex::Error,
+                "publish archive must contain exactly one root image index"
+        end
+        descriptor = descriptors.first
+        _path, contents = OCIIndex.descriptor_blob(
+          directory,
+          descriptor,
+          "publish image index"
+        )
+        index = OCIIndex.parse_json_blob(contents, "publish image index")
+        OCIIndex.validate_schema!(index, OCIIndex::IMAGE_INDEX, "publish image index")
+        digest = descriptor.fetch("digest")
+        unless metrics.fetch("content").fetch("index_digest") == digest
+          raise OCIIndex::Error, "image index digest contradicts metrics"
+        end
+        puts digest
+      end
+    rescue OCIIndex::Error, JSON::ParserError, KeyError, SystemCallError => error
+      warn "image-publish: ERROR #{error.message}"
+      exit 1
+    end
+  ' "$root/scripts/oci-index" "$index_archive" "$metrics" "$profile_id"
+)
+
+: "${GHCR_USER:?GHCR_USER is required}"
+: "${GHCR_TOKEN:?GHCR_TOKEN is required}"
+
+temporary=$(mktemp -d "$archive_directory/.image-publish.XXXXXX")
+cleanup() {
+  rm -rf "$temporary"
+}
+trap cleanup EXIT HUP INT TERM
+authfile=$temporary/auth.json
+IMAGE_PUBLISH_AUTHFILE=$authfile ruby -rjson -rbase64 -e '
+  path = ENV.fetch("IMAGE_PUBLISH_AUTHFILE")
+  user = ENV.fetch("GHCR_USER")
+  token = ENV.fetch("GHCR_TOKEN")
+  payload = {
+    "auths" => {
+      "ghcr.io" => {"auth" => Base64.strict_encode64("#{user}:#{token}")}
+    }
+  }
+  File.open(path, File::WRONLY | File::CREAT | File::TRUNC, 0o600) do |file|
+    file.write(JSON.generate(payload))
+  end
+  File.chmod(0o600, path)
+'
+
+status_probe=${IMAGE_PUBLISH_STATUS_PROBE:-$root/scripts/ghcr-manifest-status.sh}
+[ -x "$status_probe" ] || {
+  printf 'ERROR: GHCR status probe is not executable: %s\n' "$status_probe" >&2
+  exit 69
+}
+
+run_skopeo() {
+  if [ "${IMAGE_PUBLISH_DIRECT_SKOPEO:-0}" = 1 ]; then
+    skopeo "$@"
+  else
+    CONTAINER_TOOLS_IMAGE=$registry_tool \
+      "$root/scripts/container-tools" skopeo "$@"
+  fi
+}
+
+remote_digest() {
+  kind=$1
+  tag=$2
+  manifest=$temporary/remote-$tag.json
+  if run_skopeo inspect \
+      --raw \
+      --authfile "$authfile" \
+      --retry-times 3 \
+      "docker://$image:$tag" >"$manifest"
+  then
+    :
+  else
+    command_status=$?
+    printf 'ERROR: profile=%s phase=verify kind=%s tag=%s expected=%s actual=unavailable status=%s\n' \
+      "$profile_id" "$kind" "$tag" "$expected_digest" "$command_status" >&2
+    exit "$command_status"
+  fi
+  ruby -rdigest -e \
+    'print "sha256:#{Digest::SHA256.file(ARGV.fetch(0)).hexdigest}"' \
+    "$manifest"
+}
+
+verify_tag() {
+  kind=$1
+  tag=$2
+  actual_digest=$(remote_digest "$kind" "$tag")
+  if [ "$actual_digest" != "$expected_digest" ]; then
+    printf 'ERROR: profile=%s phase=verify kind=%s tag=%s expected=%s actual=%s\n' \
+      "$profile_id" "$kind" "$tag" "$expected_digest" "$actual_digest" >&2
+    exit 1
+  fi
+}
+
+publish_tag() {
+  kind=$1
+  tag=$2
+  if run_skopeo copy \
+      --all \
+      --preserve-digests \
+      --dest-authfile "$authfile" \
+      --retry-times 3 \
+      "oci-archive:$index_archive" \
+      "docker://$image:$tag"
+  then
+    :
+  else
+    command_status=$?
+    printf 'ERROR: profile=%s phase=publish kind=%s tag=%s expected=%s actual=copy-failed status=%s\n' \
+      "$profile_id" "$kind" "$tag" "$expected_digest" "$command_status" >&2
+    exit "$command_status"
+  fi
+  verify_tag "$kind" "$tag"
+}
+
+published_tags=
+append_tag() {
+  if [ -z "$published_tags" ]; then
+    published_tags=$1
+  else
+    published_tags=$published_tags,$1
+  fi
+}
+
+for tag in $immutable_tags; do
+  if status=$("$status_probe" "$image" "$tag"); then
+    :
+  else
+    command_status=$?
+    printf 'ERROR: profile=%s phase=immutable-probe tag=%s expected=present-or-absent actual=indeterminate status=%s\n' \
+      "$profile_id" "$tag" "$command_status" >&2
+    exit "$command_status"
+  fi
+  case $status in
+    present) verify_tag immutable "$tag" ;;
+    absent) publish_tag immutable "$tag" ;;
+    *)
+      printf 'ERROR: profile=%s phase=immutable-probe tag=%s expected=present-or-absent actual=%s status=0\n' \
+        "$profile_id" "$tag" "$status" >&2
+      exit 1
+      ;;
+  esac
+  append_tag "$tag"
+done
+
+for tag in $moving_tags; do
+  publish_tag moving "$tag"
+  append_tag "$tag"
+done
+
+printf 'image publish: PASS profile=%s digest=%s tags=%s\n' \
+  "$profile_id" "$expected_digest" "$published_tags"
