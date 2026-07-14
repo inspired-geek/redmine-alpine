@@ -161,6 +161,46 @@ assert_core_stylesheet() {
     fail "core stylesheet returned an empty response from $container"
 }
 
+assert_plugin_stylesheet() {
+  container=$1
+  url=$2
+  page=$tmp/$container-plugin-login.html
+  stylesheet=$tmp/$container-plugin.css
+
+  curl -fsS "$url/login" -o "$page" ||
+    fail "could not fetch /login from $container"
+  asset_path=$(
+    ruby -rcgi -e '
+      html = File.read(ARGV.fetch(0))
+      hrefs = html.scan(/\bhref="([^"]+)"/i).flatten.map do |href|
+        CGI.unescapeHTML(href)
+      end
+      path = hrefs.find do |href|
+        href.include?("/plugin_assets/smoke_plugin/") &&
+          href.match?(/\.css(?:\?[^#]*)?(?:#.*)?\z/i)
+      end
+      abort "no smoke plugin stylesheet link on /login" unless path
+      print path
+    ' "$page"
+  ) || fail "could not find the plugin stylesheet on /login in $container"
+
+  case $asset_path in
+    http://*|https://*) asset_url=$asset_path ;;
+    /*) asset_url=$url$asset_path ;;
+    *) asset_url=$url/$asset_path ;;
+  esac
+
+  if ! asset_status=$(curl -fsS -o "$stylesheet" -w '%{http_code}' "$asset_url"); then
+    fail "plugin stylesheet is not available from $container: $asset_url"
+  fi
+  [ "$asset_status" = 200 ] ||
+    fail "plugin stylesheet returned HTTP $asset_status from $container"
+  [ -s "$stylesheet" ] ||
+    fail "plugin stylesheet returned an empty response from $container"
+  grep -F 'redmine-alpine plugin asset smoke' "$stylesheet" >/dev/null ||
+    fail "plugin stylesheet content marker is missing from $container"
+}
+
 assert_running_application() {
   container=$1
   "$engine" exec \
@@ -193,9 +233,8 @@ assert_running_application() {
 
   "$engine" exec "$container" sh -c '
     set -eu
-    test -s public/plugin_assets/smoke_plugin/stylesheets/smoke.css
     test -s public/themes/smoke_theme/stylesheets/application.css
-  ' || fail "plugin assets or theme are missing in $container"
+  ' || fail "smoke theme is missing in $container"
 }
 
 configured_user=$("$engine" image inspect --format '{{.Config.User}}' "$image")
@@ -479,6 +518,7 @@ first_container=$prefix-first
 start_redmine "$first_container"
 first_url=$(wait_for_login "$first_container")
 assert_core_stylesheet "$first_container" "$first_url"
+assert_plugin_stylesheet "$first_container" "$first_url"
 assert_running_application "$first_container"
 if ! "$engine" logs "$first_container" 2>&1 |
   grep -F 'Redmine database migrations completed.' >/dev/null
@@ -502,17 +542,17 @@ fi
   "$image" -c '
     set -eu
     grep -F "redmine-alpine attachment smoke" files/smoke-attachment.txt >/dev/null
-    test -s public/plugin_assets/smoke_plugin/stylesheets/smoke.css
     test -s public/themes/smoke_theme/stylesheets/application.css
     if [ "$SMOKE_DATABASE" = sqlite ]; then
       test -s sqlite/redmine.db
     fi
-  ' || fail "attachment, plugin asset, theme, or SQLite data was not persisted"
+  ' || fail "attachment, theme, or SQLite data was not persisted"
 
 second_container=$prefix-second
 start_redmine "$second_container"
 second_url=$(wait_for_login "$second_container")
 assert_core_stylesheet "$second_container" "$second_url"
+assert_plugin_stylesheet "$second_container" "$second_url"
 assert_running_application "$second_container"
 "$engine" exec "$second_container" \
   grep -F 'redmine-alpine attachment smoke' files/smoke-attachment.txt >/dev/null ||
