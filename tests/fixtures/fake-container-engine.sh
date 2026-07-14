@@ -28,7 +28,21 @@ if [ "$command_name" = run ]; then
         ;;
       *'convert -size 2x2'*)
         printf '%s\n' "$argument" >"$FAKE_CAPTURE"
-        exit 42
+        tool_dir=$(mktemp -d)
+        trap 'rm -rf "$tool_dir"' EXIT HUP INT TERM
+        for tool in convert identify gs; do
+          printf '%s\n' '#!/bin/sh' 'exit 0' >"$tool_dir/$tool"
+          chmod 0755 "$tool_dir/$tool"
+        done
+        printf '%s\n' '#!/bin/sh' 'exit 42' >"$tool_dir/convert"
+        printf '%s\n' '#!/bin/sh' 'exit 0' >"$tool_dir/bundle"
+        chmod 0755 "$tool_dir/convert" "$tool_dir/bundle"
+        set +e
+        PATH="$tool_dir:$PATH" sh -c "$argument"
+        status=$?
+        set -e
+        printf '%s\n' "$status" >"$FAKE_CAPTURE_STATUS"
+        exit "$status"
         ;;
     esac
   done

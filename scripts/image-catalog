@@ -53,6 +53,9 @@ begin
   when "compression"
     require_arity!(ARGV, 0, "compression takes no arguments")
     puts JSON.generate(catalog.compression)
+  when "tool-policy"
+    require_arity!(ARGV, 0, "tool-policy takes no arguments")
+    puts JSON.generate(catalog.tool_policy)
   when "build-args"
     id, resolution = profile_arguments!(ARGV)
     puts JSON.generate(catalog.build_args(id, resolution: resolution))

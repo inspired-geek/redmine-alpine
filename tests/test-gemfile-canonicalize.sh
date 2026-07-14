@@ -50,6 +50,16 @@ grep -F 'gem "rack", "~> 3.0"' "$main" >/dev/null ||
   fail "unrelated Gemfile content was removed"
 ruby -c "$main" >/dev/null || fail "canonical Gemfile is invalid Ruby"
 
+comment_main=$tmp/comment.Gemfile
+comment_overrides=$tmp/comment.Gemfile.local
+printf '%s\n' \
+  'gem "puma", "~> 6.0" # runtime server' \
+  'gem "rack", "~> 3.0"' >"$comment_main"
+printf '%s\n' 'gem "puma", "8.0.2"' >"$comment_overrides"
+"$helper" "$comment_main" "$comment_overrides"
+grep -Fx 'gem "rack", "~> 3.0"' "$comment_main" >/dev/null ||
+  fail "declaration after a trailing comment was removed"
+
 malformed_main=$tmp/malformed.Gemfile
 malformed_overrides=$tmp/malformed.Gemfile.local
 printf '%s\n' 'gem "rack", "~> 3.0"' >"$malformed_main"

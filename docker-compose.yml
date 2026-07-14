@@ -24,7 +24,6 @@ services:
       - redmine-files:/usr/src/redmine/files
       - redmine-plugins:/usr/src/redmine/plugins
       - redmine-plugin-assets:/usr/src/redmine/public/plugin_assets
-      - redmine-assets:/usr/src/redmine/public/assets
       - redmine-themes:/usr/src/redmine/public/themes
 
   db:
@@ -48,6 +47,5 @@ volumes:
   redmine-files:
   redmine-plugins:
   redmine-plugin-assets:
-  redmine-assets:
   redmine-themes:
   redmine-data:

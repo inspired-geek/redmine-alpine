@@ -1,0 +1,141 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  printf '%s\n' \
+    "usage: $0 PROFILE --index-archive FILE --metrics FILE" >&2
+  exit 64
+}
+
+[ "$#" -gt 0 ] || usage
+profile_id=$1
+shift
+index_archive=
+metrics=
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --index-archive)
+      [ "$#" -ge 2 ] || usage
+      index_archive=$2
+      shift 2
+      ;;
+    --metrics)
+      [ "$#" -ge 2 ] || usage
+      metrics=$2
+      shift 2
+      ;;
+    *) usage ;;
+  esac
+done
+
+[ -n "$index_archive" ] && [ -n "$metrics" ] || usage
+[ -s "$index_archive" ] || {
+  printf 'ERROR: OCI index archive is missing or empty: %s\n' "$index_archive" >&2
+  exit 66
+}
+[ -s "$metrics" ] || {
+  printf 'ERROR: image metrics are missing or empty: %s\n' "$metrics" >&2
+  exit 66
+}
+
+root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd -P)
+profile=$("$root/scripts/image-catalog" profile "$profile_id")
+puma_version=$(
+  printf '%s' "$profile" |
+    ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("puma_version")'
+)
+runtime_requires=$(
+  printf '%s' "$profile" |
+    ruby -rjson -e \
+      'print JSON.parse(STDIN.read).dig("runtime_checks", "requires").join(" ")'
+)
+
+archive_directory=$(CDPATH= cd -- "$(dirname "$index_archive")" && pwd -P)
+index_archive=$archive_directory/$(basename "$index_archive")
+metrics_directory=$(CDPATH= cd -- "$(dirname "$metrics")" && pwd -P)
+metrics=$metrics_directory/$(basename "$metrics")
+layout=$(mktemp -d "$archive_directory/.zstd-preflight.XXXXXX")
+cleanup() {
+  rm -rf "$layout"
+}
+trap cleanup EXIT HUP INT TERM
+
+if [ -n "${IMAGE_PREFLIGHT_PREPARE:-}" ]; then
+  "$IMAGE_PREFLIGHT_PREPARE" \
+    "$profile_id" "$index_archive" "$metrics" "$layout"
+else
+  ruby -rjson -rdigest -e '
+    indexer, profile_id, archive, metrics_path, layout = ARGV
+    load indexer
+    metrics = JSON.parse(File.read(metrics_path))
+    abort "metrics profile mismatch" unless metrics.fetch("profile") == profile_id
+    measured = metrics.fetch("archives").fetch("index")
+    abort "index archive size mismatch" unless measured.fetch("bytes") == File.size(archive)
+    abort "index archive checksum mismatch" unless
+      measured.fetch("sha256") == Digest::SHA256.file(archive).hexdigest
+
+    OCIIndex.extract_archive(archive, layout)
+    OCIIndex.validate_layout!(layout)
+    root_index = OCIIndex.parse_json_file(
+      File.join(layout, "index.json"), "combined OCI layout index"
+    )
+    roots = root_index.fetch("manifests")
+    abort "combined OCI root descriptor mismatch" unless roots.length == 1
+    root_descriptor = roots.first
+    abort "combined OCI root is not an image index" unless
+      root_descriptor.fetch("mediaType") == OCIIndex::IMAGE_INDEX
+    _path, contents = OCIIndex.descriptor_blob(
+      layout, root_descriptor, "combined image index"
+    )
+    combined = OCIIndex.parse_json_blob(contents, "combined image index")
+    zstd = combined.fetch("manifests").find do |descriptor|
+      descriptor.dig("annotations", OCIIndex::ZSTD_MARKER) == "true"
+    end
+    abort "zstd:chunked descriptor missing" unless zstd
+    expected = metrics.fetch("content").fetch("zstd_chunked_manifest_digest")
+    abort "zstd:chunked digest mismatch" unless zstd.fetch("digest") == expected
+    OCIIndex.descriptor_blob(layout, zstd, "zstd:chunked manifest")
+
+    selected = JSON.parse(JSON.generate(zstd))
+    selected["annotations"] ||= {}
+    selected["annotations"]["org.opencontainers.image.ref.name"] = "zstd-preflight"
+    selected_index = {
+      "schemaVersion" => 2,
+      "mediaType" => OCIIndex::IMAGE_INDEX,
+      "manifests" => [selected]
+    }
+    File.write(
+      File.join(layout, "index.json"),
+      "#{JSON.pretty_generate(selected_index)}\n"
+    )
+  ' "$root/scripts/oci-index" "$profile_id" "$index_archive" "$metrics" "$layout"
+fi
+
+run_podman() {
+  if [ "${IMAGE_PREFLIGHT_DIRECT_PODMAN:-0}" = 1 ]; then
+    podman "$@"
+  else
+    "$root/scripts/container-tools" podman "$@"
+  fi
+}
+
+image_id=$(run_podman pull --quiet "oci:$layout:zstd-preflight")
+[ -n "$image_id" ] || {
+  printf '%s\n' 'ERROR: Podman returned an empty zstd:chunked image ID.' >&2
+  exit 1
+}
+puma_output=$(
+  run_podman run --rm --entrypoint bundle "$image_id" exec puma --version
+)
+case $puma_output in
+  *"$puma_version"*) ;;
+  *)
+    printf 'ERROR: zstd:chunked Puma version mismatch: %s\n' "$puma_output" >&2
+    exit 1
+    ;;
+esac
+run_podman run --rm --entrypoint bundle "$image_id" \
+  exec ruby -e 'ARGV.each { |library| require library }' $runtime_requires
+
+printf 'zstd:chunked runtime preflight: PASS profile=%s image=%s\n' \
+  "$profile_id" "$image_id"

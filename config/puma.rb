@@ -14,6 +14,12 @@ threads thread_count, thread_count
 if worker_count > 1
   workers worker_count
   preload_app!
+  before_fork do
+    ActiveRecord::Base.connection_pool.disconnect! if defined?(ActiveRecord::Base)
+  end
+  on_worker_boot do
+    ActiveRecord::Base.establish_connection if defined?(ActiveRecord::Base)
+  end
 end
 
 pidfile "/usr/src/redmine/tmp/pids/puma.pid"

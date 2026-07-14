@@ -10,10 +10,10 @@ root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd -P)
 if [ -n "${CONTAINER_TOOLS_IMAGE:-}" ]; then
   tool_image=$CONTAINER_TOOLS_IMAGE
 else
+  tool_policy=$("$root/scripts/image-catalog" tool-policy)
   tool_image=$(
-    ruby -rjson -e \
-      'print JSON.parse(File.read(ARGV.fetch(0))).dig("tool_policy", "toolchain")' \
-      "$root/build/images.json"
+    printf '%s' "$tool_policy" |
+      ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("toolchain")'
   )
 fi
 
@@ -66,7 +66,8 @@ case $git_common_path in
   *) git_common_path=$root/$git_common_path ;;
 esac
 git_common=$(cd "$git_common_path" && pwd -P)
-mount_root=$(dirname "$git_common")
+worktree_root=$(git -C "$root" rev-parse --show-toplevel)
+worktree_root=$(cd "$worktree_root" && pwd -P)
 workdir=$(pwd -P)
 
 if ! "$engine" volume inspect "$storage" >/dev/null 2>&1; then
@@ -102,7 +103,8 @@ container_id=$("$engine" run \
   --env STORAGE_DRIVER=vfs \
   --tmpfs /home/podman/.local/share/containers:rw \
   --volume "$storage:/var/lib/containers" \
-  --volume "$mount_root:$mount_root" \
+  --volume "$worktree_root:$worktree_root" \
+  --volume "$git_common:$git_common" \
   --workdir "$workdir" \
   "$tool_image" \
   "$@")

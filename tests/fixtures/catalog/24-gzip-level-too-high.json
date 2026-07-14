@@ -1,0 +1,7 @@
+{
+  "description": "gzip levels above the supported maximum are rejected",
+  "operations": [
+    {"op": "replace", "path": "/tool_policy/compression/gzip_level", "value": 10}
+  ],
+  "expected": "must be <= 9"
+}

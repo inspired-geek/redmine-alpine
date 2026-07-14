@@ -287,6 +287,7 @@ RUNTIME_PATHS = %w[
   /usr/src/redmine/files
   /usr/src/redmine/log
   /usr/src/redmine/plugins
+  /usr/src/redmine/public/assets
   /usr/src/redmine/public/plugin_assets
   /usr/src/redmine/public/themes
   /usr/src/redmine/sqlite
@@ -617,6 +618,11 @@ assert_equal(
   JSON.parse(run_cli("compression")),
   "compression output"
 )
+assert_equal(
+  catalog.fetch("tool_policy"),
+  JSON.parse(run_cli("tool-policy")),
+  "tool policy output"
+)
 
 PROFILE_ORDER.each do |id|
   expected_profile = profiles.find { |profile| profile.fetch("id") == id }
@@ -657,6 +663,11 @@ assert_equal(true,
              schema.dig("$defs", "compatibility_gem", "properties",
                         "force_ruby_platform", "const"),
              "per-gem force_ruby_platform must only allow true")
+assert_equal(9, schema.dig("$defs", "compression", "properties", "gzip_level", "maximum"),
+             "gzip compression maximum")
+assert_equal(512,
+             schema.dig("$defs", "oci", "properties", "description", "maxLength"),
+             "OCI description maximum")
 
 def pointer_tokens(pointer)
   raise "invalid JSON pointer #{pointer.inspect}" unless pointer.start_with?("/")
@@ -711,7 +722,7 @@ def apply_operation(document, operation)
 end
 
 fixtures = Dir[FIXTURE_GLOB].sort
-assert(fixtures.length >= 18, "focused invalid catalog fixtures are missing")
+assert(fixtures.length >= 26, "focused invalid catalog fixtures are missing")
 
 Dir.mktmpdir("image-catalog-test") do |directory|
   fixtures.each do |fixture_path|

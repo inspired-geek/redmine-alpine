@@ -50,10 +50,14 @@ begin
       raise GemfileCanonicalizeError,
             "cannot locate gem expression on line #{start_line}"
     end
-    terminator = tokens.drop(token_index).find do |_position, event, _token, _state|
-      event == :on_nl || event == :on_semicolon
+    terminator = tokens.drop(token_index).find do |_position, event, token, _state|
+      event == :on_nl || event == :on_semicolon ||
+        (event == :on_comment && token.end_with?("\n"))
     end
-    unless terminator && terminator[1] == :on_nl
+    standalone_newline = terminator &&
+      (terminator[1] == :on_nl ||
+       (terminator[1] == :on_comment && terminator[2].end_with?("\n")))
+    unless standalone_newline
       raise GemfileCanonicalizeError,
             "gem expression on line #{start_line} has no standalone newline"
     end

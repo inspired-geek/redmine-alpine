@@ -92,7 +92,8 @@ assert_contains Containerfile 'FROM ${RUNTIME_BASE} AS runtime'
 assert_contains Containerfile 'COPY config/production.append.rb /tmp/redmine-alpine-production.rb'
 assert_contains Containerfile 'cat /tmp/redmine-alpine-production.rb >> config/environments/production.rb'
 assert_not_contains Containerfile 'COPY --chown=1001:0 config/environments/production.rb'
-assert_contains Containerfile 'COPY --chown=1001:0 config/database.yml config/secrets.yml config/puma.rb'
+assert_contains Containerfile 'COPY config/database.yml config/secrets.yml config/puma.rb'
+assert_not_contains Containerfile '--chown=1001:0'
 assert_contains Containerfile 'cmake -S /tmp/mariadb-connector-source'
 assert_contains Containerfile 'COPY --from=builder /opt/mariadb-connector-runtime/'
 assert_contains Containerfile 'LD_LIBRARY_PATH=/opt/mariadb-connector/lib/mariadb'
@@ -158,6 +159,7 @@ assert_not_contains "$ci_workflow" 'push:'
 
 assert_contains "$pipeline_workflow" 'workflow_call:'
 assert_contains "$pipeline_workflow" 'tests/validate-images.sh'
+assert_contains "$pipeline_workflow" 'ruby tests/test-runtime-config.rb'
 assert_contains "$pipeline_workflow" 'scripts/image-catalog matrix'
 assert_contains "$pipeline_workflow" 'scripts/resolve-trunk'
 assert_contains "$pipeline_workflow" 'scripts/image-build'
@@ -166,17 +168,21 @@ assert_contains "$pipeline_workflow" 'scripts/image-metrics'
 assert_not_contains "$pipeline_workflow" 'scripts/image-publish'
 assert_contains "$pipeline_workflow" 'tests/smoke-image.sh "$PROFILE" "$LOCAL_IMAGE" sqlite'
 assert_contains "$pipeline_workflow" 'tests/smoke-image.sh "$PROFILE" "$LOCAL_IMAGE" mariadb'
-assert_contains "$pipeline_workflow" 'actions/checkout@v6'
-assert_contains "$pipeline_workflow" 'actions/upload-artifact@v7'
-assert_contains "$pipeline_workflow" 'actions/download-artifact@v8'
+assert_contains "$pipeline_workflow" 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6'
+assert_contains "$pipeline_workflow" 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7'
+assert_contains "$pipeline_workflow" 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8'
+assert_contains "$pipeline_workflow" 'matrix=$(scripts/image-catalog matrix)'
+assert_not_contains "$pipeline_workflow" 'value=$(scripts/image-catalog matrix)'
 assert_contains "$pipeline_workflow" 'rootfs.index.oci.tar'
+assert_contains "$pipeline_workflow" 'scripts/image-preflight'
+assert_contains "$pipeline_workflow" 'IMAGE_PREFLIGHT_DIRECT_PODMAN: 1'
 
 assert_contains "$publish_workflow" 'branches: [master]'
 assert_not_contains "$publish_workflow" 'pull_request:'
 assert_contains "$publish_workflow" 'uses: ./.github/workflows/image-pipeline.yml'
 assert_contains "$publish_workflow" 'scripts/image-publish'
-assert_contains "$publish_workflow" 'actions/checkout@v6'
-assert_contains "$publish_workflow" 'actions/download-artifact@v8'
+assert_contains "$publish_workflow" 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6'
+assert_contains "$publish_workflow" 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8'
 assert_contains "$publish_workflow" 'rootfs.index.oci.tar'
 assert_contains "$publish_workflow" 'zstd_chunked_manifest_digest'
 assert_contains "$publish_workflow" 'enable_partial_images = \"true\"'
@@ -193,8 +199,9 @@ end
 raise "CI trigger is not pull-request-only" unless
   workflow_triggers(ci) == {"pull_request" => nil}
 raise "CI workflow permissions" unless ci.fetch("permissions") == {"contents" => "read"}
-raise "CI runs may be cancelled" unless ci.dig("concurrency", "cancel-in-progress") == false
-raise "CI runs are not queued" unless ci.dig("concurrency", "queue") == "max"
+raise "stale CI runs are not cancelled" unless
+  ci.dig("concurrency", "cancel-in-progress") == true
+raise "CI unexpectedly queues stale runs" if ci.fetch("concurrency").key?("queue")
 raise "CI contains more than the reusable build call" unless ci.fetch("jobs").keys == ["images"]
 ci_call = ci.dig("jobs", "images")
 raise "CI does not call the shared pipeline" unless
@@ -299,5 +306,7 @@ assert_contains docker-compose.yml 'condition: service_healthy'
 assert_contains docker-compose.yml 'SECRET_KEY_BASE: ${SECRET_KEY_BASE:?'
 assert_contains docker-compose.yml 'DB_PASSWORD: ${DB_PASSWORD:?'
 assert_not_contains docker-compose.yml mariadb:latest
+assert_not_contains docker-compose.yml redmine-assets
+assert_contains Containerfile 'public/assets'
 
 printf '%s\n' 'unified image repository contract: PASS'

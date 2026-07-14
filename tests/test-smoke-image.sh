@@ -75,6 +75,7 @@ puma_version=$(printf '%s' "$profile" | ruby -rjson -e \
 
 set +e
 FAKE_CAPTURE=$tmp/image-adapter-command \
+FAKE_CAPTURE_STATUS=$tmp/image-adapter-status \
 FAKE_REDMINE_VERSION=$redmine_version \
 FAKE_PUMA_VERSION=$puma_version \
 CONTAINER_ENGINE=$fake_engine \
@@ -88,6 +89,8 @@ set -e
   fail "image-adapter command was not passed to the container engine"
 grep -F 'mini_magick' "$tmp/image-adapter-command" >/dev/null ||
   fail "Ruby image-adapter code was split from the container shell command"
+[ "$(cat "$tmp/image-adapter-status")" -eq 42 ] ||
+  fail "a failed image command did not stop its multi-command shell block"
 
 set +e
 "$smoke" 5.1 image invalid >/dev/null 2>&1

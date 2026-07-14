@@ -73,4 +73,10 @@ status=$?
 set -e
 [ "$status" -eq 64 ] || fail "invalid retry count was accepted"
 
+set +e
+APK_ADD_MAX_ATTEMPTS=00 "$helper" ca-certificates >/dev/null 2>&1
+status=$?
+set -e
+[ "$status" -eq 64 ] || fail "zero-padded zero retry count was accepted"
+
 printf '%s\n' 'apk add retry helper: PASS'

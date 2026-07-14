@@ -145,6 +145,9 @@ module ImageCatalog
       if schema.key?("minLength") && value.length < schema.fetch("minLength")
         invalid!(path, "must contain at least #{schema.fetch('minLength')} characters")
       end
+      if schema.key?("maxLength") && value.length > schema.fetch("maxLength")
+        invalid!(path, "must contain at most #{schema.fetch('maxLength')} characters")
+      end
       if schema.key?("pattern") && !Regexp.new(schema.fetch("pattern")).match?(value)
         invalid!(path, "does not match pattern #{schema.fetch('pattern').inspect}")
       end
@@ -153,6 +156,9 @@ module ImageCatalog
     def validate_integer!(value, schema, path)
       if schema.key?("minimum") && value < schema.fetch("minimum")
         invalid!(path, "must be >= #{schema.fetch('minimum')}")
+      end
+      if schema.key?("maximum") && value > schema.fetch("maximum")
+        invalid!(path, "must be <= #{schema.fetch('maximum')}")
       end
     end
 
@@ -220,6 +226,10 @@ module ImageCatalog
 
     def compression
       data.dig("tool_policy", "compression")
+    end
+
+    def tool_policy
+      data.fetch("tool_policy")
     end
 
     def build_args(id, resolution: nil)
@@ -390,6 +400,7 @@ module ImageCatalog
         unless profile.dig("ruby", "install_mode") == "base_image"
           semantic_error!("trunk Ruby install mode must be base_image")
         end
+        validate_base_image_ruby_version!(profile, reference)
         return
       end
 
@@ -423,6 +434,16 @@ module ImageCatalog
       expected_mode = reference.start_with?("alpine:") ? "alpine_package" : "base_image"
       unless profile.dig("ruby", "install_mode") == expected_mode
         semantic_error!("#{id}: Ruby install mode contradicts base image")
+      end
+      validate_base_image_ruby_version!(profile, reference) if expected_mode == "base_image"
+    end
+
+    def validate_base_image_ruby_version!(profile, reference)
+      image = reference.split("@", 2).first
+      match = %r{(?:\A|/)ruby:([0-9]+\.[0-9]+)(?:[.-]|\z)}.match(image)
+      version = profile.dig("ruby", "version")
+      unless match && version.start_with?("#{match[1]}.")
+        semantic_error!("#{profile.fetch('id')}: Ruby version contradicts base image")
       end
     end
 

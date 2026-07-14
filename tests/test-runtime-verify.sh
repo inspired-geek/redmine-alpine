@@ -26,11 +26,13 @@ mkdir -p \
   "$fixture/lib" \
   "$fixture/opt/mariadb-connector/lib/mariadb" \
   "$fixture/usr/bin" \
+  "$bundle/bin" \
   "$bundle/gems/example-1.0/lib" \
   "$app/config" \
   "$app/files" \
   "$app/log" \
   "$app/plugins" \
+  "$app/public/assets" \
   "$app/public/plugin_assets" \
   "$app/public/themes" \
   "$app/sqlite" \
@@ -51,6 +53,8 @@ RUBY
 : >"$app/config/database.yml"
 : >"$app/config/secrets.yml"
 : >"$app/config/puma.rb"
+: >"$app/Gemfile"
+: >"$bundle/bin/bundle"
 : >"$fixture/usr/bin/ruby"
 
 cat >"$bin/ruby" <<'SH'
@@ -107,7 +111,7 @@ for command in bundle gs convert; do
   cp "$bin/ruby" "$bin/$command"
 done
 
-runtime_paths='/usr/src/redmine /usr/src/redmine/config/database.yml /usr/src/redmine/config/secrets.yml /usr/src/redmine/config/puma.rb /usr/src/redmine/files /usr/src/redmine/log /usr/src/redmine/plugins /usr/src/redmine/public/plugin_assets /usr/src/redmine/public/themes /usr/src/redmine/sqlite /usr/src/redmine/tmp /usr/src/redmine/tmp/pdf /usr/src/redmine/tmp/pids'
+runtime_paths='/usr/src/redmine /usr/src/redmine/config/database.yml /usr/src/redmine/config/secrets.yml /usr/src/redmine/config/puma.rb /usr/src/redmine/files /usr/src/redmine/log /usr/src/redmine/plugins /usr/src/redmine/public/assets /usr/src/redmine/public/plugin_assets /usr/src/redmine/public/themes /usr/src/redmine/sqlite /usr/src/redmine/tmp /usr/src/redmine/tmp/pdf /usr/src/redmine/tmp/pids'
 
 run_verify() {
   env PATH="$bin:$PATH" \
@@ -142,6 +146,14 @@ grep -F 'ruby -e ' "$log" >/dev/null ||
   fail "Ruby/gem contract was not checked"
 grep -F 'apk info -e gcc' "$log" >/dev/null ||
   fail "forbidden packages were not checked"
+
+chmod g+w "$app/Gemfile"
+set +e
+run_verify "$verify" contract >"$tmp/output" 2>"$tmp/error"
+status=$?
+set -e
+[ "$status" -ne 0 ] || fail "group-writable runtime code was accepted"
+chmod g-w "$app/Gemfile"
 
 RUNTIME_VERIFY_RUBY_EXTENSION=1 \
 RUNTIME_VERIFY_LDD_RUBY_HOST_SYMBOLS=1 \

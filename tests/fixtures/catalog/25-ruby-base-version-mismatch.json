@@ -1,0 +1,7 @@
+{
+  "description": "base-image Ruby series must match the declared Ruby version",
+  "operations": [
+    {"op": "replace", "path": "/profiles/6/ruby/version", "value": "9.9.9"}
+  ],
+  "expected": "Ruby version contradicts base image"
+}

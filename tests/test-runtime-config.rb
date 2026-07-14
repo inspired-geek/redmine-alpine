@@ -8,10 +8,11 @@ ROOT = File.expand_path("..", __dir__)
 DATABASE_CONFIG = File.join(ROOT, "config/database.yml")
 SECRETS_CONFIG = File.join(ROOT, "config/secrets.yml")
 PUMA_CONFIG = File.join(ROOT, "config/puma.rb")
+PRODUCTION_APPEND = File.join(ROOT, "config/production.append.rb")
 ENVIRONMENT_KEYS = %w[
   DB_ADAPTER DB_NAME DB_HOST DB_PORT DB_USER DB_PASSWORD
   RAILS_MAX_THREADS SECRET_KEY_BASE REDMINE_SECRET_KEY_BASE
-  RAILS_ENV PORT WEB_CONCURRENCY
+  RAILS_ENV RAILS_LOG_TO_STDOUT PORT WEB_CONCURRENCY
 ].freeze
 
 def assert(condition, message)
@@ -64,8 +65,68 @@ class PumaContract
     values[:preload] = true
   end
 
+  def before_fork(&block)
+    values[:before_fork] = block
+  end
+
+  def on_worker_boot(&block)
+    values[:on_worker_boot] = block
+  end
+
   def pidfile(value)
     values[:pidfile] = value
+  end
+end
+
+class ProductionConfigContract
+  attr_accessor :logger
+  attr_reader :active_record, :log_formatter
+
+  def initialize
+    @active_record = Struct.new(:dump_schema_after_migration).new
+    @log_formatter = Object.new
+  end
+
+  def config
+    self
+  end
+end
+
+class ProductionApplicationContract
+  attr_reader :config
+
+  def initialize
+    @config = ProductionConfigContract.new
+  end
+
+  def configure(&block)
+    config.instance_eval(&block)
+  end
+end
+
+module Rails
+  class << self
+    attr_accessor :application
+  end
+end
+
+module ActiveSupport
+  class Logger
+    attr_accessor :formatter
+
+    def initialize(_stream); end
+  end
+
+  class TaggedLogging
+    def initialize(_logger); end
+  end
+end
+
+def production_config(environment)
+  with_environment(environment) do
+    Rails.application = ProductionApplicationContract.new
+    load PRODUCTION_APPEND
+    Rails.application.config
   end
 end
 
@@ -99,6 +160,19 @@ assert(
   mysql.dig("variables", "transaction_isolation") == "READ-COMMITTED",
   "MariaDB transaction isolation"
 )
+
+dangerous = 'part#{word\\path: "quoted"'
+database = render_yaml(
+  DATABASE_CONFIG,
+  "DB_ADAPTER" => "mysql2",
+  "DB_NAME" => dangerous,
+  "DB_HOST" => dangerous,
+  "DB_USER" => dangerous,
+  "DB_PASSWORD" => dangerous
+).fetch("production")
+%w[database host username password].each do |key|
+  assert(database.fetch(key) == dangerous, "YAML-safe #{key}")
+end
 
 begin
   render_yaml(DATABASE_CONFIG, "DB_ADAPTER" => "postgresql")
@@ -139,6 +213,8 @@ assert(puma.fetch(:bind) == "tcp://0.0.0.0:8080", "Puma bind")
 assert(puma.fetch(:threads) == [5, 5], "Puma threads")
 assert(!puma.key?(:workers), "Puma default workers")
 assert(!puma.key?(:preload), "Puma default preload")
+assert(!puma.key?(:before_fork), "Puma default before_fork")
+assert(!puma.key?(:on_worker_boot), "Puma default on_worker_boot")
 assert(puma.fetch(:pidfile) == "/usr/src/redmine/tmp/pids/puma.pid", "Puma pidfile")
 
 puma = PumaContract.new(
@@ -150,6 +226,58 @@ assert(puma.fetch(:bind) == "tcp://0.0.0.0:9090", "custom Puma bind")
 assert(puma.fetch(:threads) == [7, 7], "custom Puma threads")
 assert(puma.fetch(:workers) == 3, "Puma workers")
 assert(puma.fetch(:preload), "Puma preload")
+assert(puma.fetch(:before_fork).respond_to?(:call), "Puma before_fork hook")
+assert(puma.fetch(:on_worker_boot).respond_to?(:call), "Puma on_worker_boot hook")
+
+module ActiveRecord
+  class ConnectionPoolContract
+    attr_reader :disconnects
+
+    def initialize
+      @disconnects = 0
+    end
+
+    def disconnect!
+      @disconnects += 1
+    end
+  end
+
+  class Base
+    class << self
+      attr_reader :establishments
+
+      def connection_pool
+        @connection_pool ||= ConnectionPoolContract.new
+      end
+
+      def establish_connection
+        @establishments = (@establishments || 0) + 1
+      end
+    end
+  end
+end
+
+puma.fetch(:before_fork).call
+puma.fetch(:on_worker_boot).call
+assert(ActiveRecord::Base.connection_pool.disconnects == 1, "Puma disconnect before fork")
+assert(ActiveRecord::Base.establishments == 1, "Puma reconnect after fork")
+
+production = production_config("RAILS_LOG_TO_STDOUT" => "")
+assert(production.logger.nil?, "empty RAILS_LOG_TO_STDOUT disables stdout logging")
+assert(!production.active_record.dump_schema_after_migration, "schema dump disabled")
+
+production = production_config(
+  "RAILS_LOG_TO_STDOUT" => "true",
+  "REDMINE_SECRET_KEY_BASE" => "legacy-exec-secret"
+)
+assert(production.logger.is_a?(ActiveSupport::TaggedLogging), "stdout logging enabled")
+assert(ENV["SECRET_KEY_BASE"].nil?, "production config leaked SECRET_KEY_BASE")
+
+with_environment("REDMINE_SECRET_KEY_BASE" => "legacy-exec-secret") do
+  Rails.application = ProductionApplicationContract.new
+  load PRODUCTION_APPEND
+  assert(ENV["SECRET_KEY_BASE"] == "legacy-exec-secret", "legacy secret alias")
+end
 
 %w[PORT RAILS_MAX_THREADS WEB_CONCURRENCY].each do |key|
   begin

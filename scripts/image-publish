@@ -84,10 +84,10 @@ immutable_tags=$(
   printf '%s' "$profile" |
     ruby -rjson -e 'puts JSON.parse(STDIN.read).dig("tags", "immutable")'
 )
+tool_policy=$("$root/scripts/image-catalog" tool-policy)
 registry_tool=$(
-  ruby -rjson -e \
-    'print JSON.parse(File.read(ARGV.fetch(0))).dig("tool_policy", "registry_tool")' \
-    "$root/build/images.json"
+  printf '%s' "$tool_policy" |
+    ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("registry_tool")'
 )
 
 expected_digest=$(
@@ -217,6 +217,15 @@ verify_tag() {
   fi
 }
 
+verify_existing_immutable_tag() {
+  tag=$1
+  actual_digest=$(remote_digest immutable "$tag")
+  if [ "$actual_digest" != "$expected_digest" ]; then
+    printf 'image-publish: immutable tag preserved profile=%s tag=%s remote=%s current=%s\n' \
+      "$profile_id" "$tag" "$actual_digest" "$expected_digest" >&2
+  fi
+}
+
 publish_tag() {
   kind=$1
   tag=$2
@@ -257,7 +266,7 @@ for tag in $immutable_tags; do
     exit "$command_status"
   fi
   case $status in
-    present) verify_tag immutable "$tag" ;;
+    present) verify_existing_immutable_tag "$tag" ;;
     absent) publish_tag immutable "$tag" ;;
     *)
       printf 'ERROR: profile=%s phase=immutable-probe tag=%s expected=present-or-absent actual=%s status=0\n' \

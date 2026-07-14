@@ -9,10 +9,10 @@ fi
 output=$2
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 profile=$("$root/scripts/image-catalog" profile trunk)
+tool_policy=$("$root/scripts/image-catalog" tool-policy)
 registry_tool=$(
-  ruby -rjson -e \
-    'print JSON.parse(File.read(ARGV.fetch(0))).dig("tool_policy", "registry_tool")' \
-    "$root/build/images.json"
+  printf '%s' "$tool_policy" |
+    ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("registry_tool")'
 )
 container_tools=${TRUNK_CONTAINER_TOOLS:-$root/scripts/container-tools}
 [ -x "$container_tools" ] || {
@@ -37,12 +37,32 @@ ref=$(printf '%s' "$profile" | ruby -rjson -e \
 base=$(printf '%s' "$profile" | ruby -rjson -e \
   'print JSON.parse(STDIN.read).dig("base", "reference")')
 
-line=$(
-  git \
-    -c http.lowSpeedLimit=1 \
-    -c http.lowSpeedTime=30 \
-    ls-remote "$repository" "$ref"
-)
+git_retry_delay=${TRUNK_GIT_RETRY_DELAY_SECONDS:-2}
+case $git_retry_delay in
+  ''|*[!0-9]*)
+    printf 'ERROR: TRUNK_GIT_RETRY_DELAY_SECONDS must be a non-negative integer\n' >&2
+    exit 64
+    ;;
+esac
+attempt=1
+while :; do
+  if line=$(
+    git \
+      -c http.lowSpeedLimit=1 \
+      -c http.lowSpeedTime=30 \
+      ls-remote "$repository" "$ref"
+  ); then
+    break
+  fi
+  if [ "$attempt" -ge 3 ]; then
+    printf 'ERROR: git ls-remote failed after %s attempts\n' "$attempt" >&2
+    exit 69
+  fi
+  printf 'WARNING: git ls-remote failed (attempt %s/3); retrying\n' \
+    "$attempt" >&2
+  sleep "$git_retry_delay"
+  attempt=$((attempt + 1))
+done
 set -- $line
 commit=${1:-}
 resolved_ref=${2:-}

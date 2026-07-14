@@ -79,23 +79,44 @@ env PATH="$tmp/bin:$PATH" CONTAINER_TOOLS_ENGINE=fake-engine \
 grep -F -- "$registry_tool" "$log" >/dev/null ||
   fail "explicit pinned tool image override was ignored"
 
+custom_catalog=$tmp/custom-images.json
+ruby -rjson -e '
+  value = JSON.parse(File.read(ARGV.fetch(0)))
+  value["tool_policy"]["toolchain"] = value.dig("tool_policy", "registry_tool")
+  File.write(ARGV.fetch(1), JSON.generate(value))
+' "$root/build/images.json" "$custom_catalog"
+env PATH="$tmp/bin:$PATH" CONTAINER_TOOLS_ENGINE=fake-engine \
+  CONTAINER_TOOLS_PLATFORM=linux/amd64 \
+  CONTAINER_TOOLS_STORAGE=redmine-test-storage \
+  CONTAINER_TOOLS_TEST_VOLUME="$tmp/volume" \
+  CONTAINER_TOOLS_TEST_LOG="$log" IMAGE_CATALOG="$custom_catalog" \
+  "$wrapper" true
+grep -F -- "$registry_tool" "$log" >/dev/null ||
+  fail "IMAGE_CATALOG toolchain override was ignored"
+
 normal_repo=$tmp/normal-repo
 normal_bin=$tmp/normal-bin
 mkdir -p \
   "$normal_repo/.git" \
   "$normal_repo/build" \
-  "$normal_repo/scripts" \
+  "$normal_repo/scripts/lib" \
   "$normal_repo/subdir" \
   "$normal_bin"
 cp "$root/build/images.json" "$normal_repo/build/images.json"
+cp "$root/build/images.schema.json" "$normal_repo/build/images.schema.json"
 cp "$wrapper" "$normal_repo/scripts/container-tools"
+cp "$root/scripts/image-catalog" "$normal_repo/scripts/image-catalog"
+cp "$root/scripts/lib/image_catalog.rb" "$normal_repo/scripts/lib/image_catalog.rb"
 normal_repo_physical=$(cd "$normal_repo" && pwd -P)
 cat >"$normal_bin/git" <<'SH'
 #!/bin/sh
 set -eu
 [ "$1" = -C ]
-[ "$3 $4" = "rev-parse --git-common-dir" ]
-printf '%s\n' .git
+case "$3 $4" in
+  'rev-parse --git-common-dir') printf '%s\n' .git ;;
+  'rev-parse --show-toplevel') printf '%s\n' "$2" ;;
+  *) exit 64 ;;
+esac
 SH
 chmod 0755 "$normal_bin/git"
 (
@@ -137,6 +158,45 @@ grep -F "rm -f fixture-container" "$log" >/dev/null ||
   fail "detached container was not removed"
 grep -F -- "--volume $normal_repo_physical:$normal_repo_physical" "$log" >/dev/null ||
   fail "normal checkout root was not mounted from a subdirectory"
+
+external_repo=$tmp/external-repo
+external_common=$tmp/common-repo
+external_bin=$tmp/external-bin
+mkdir -p "$external_repo/build" "$external_repo/scripts/lib" "$external_repo/subdir" \
+  "$external_common/.git" "$external_bin"
+cp "$root/build/images.json" "$external_repo/build/images.json"
+cp "$root/build/images.schema.json" "$external_repo/build/images.schema.json"
+cp "$wrapper" "$external_repo/scripts/container-tools"
+cp "$root/scripts/image-catalog" "$external_repo/scripts/image-catalog"
+cp "$root/scripts/lib/image_catalog.rb" "$external_repo/scripts/lib/image_catalog.rb"
+external_repo_physical=$(cd "$external_repo" && pwd -P)
+external_common_physical=$(cd "$external_common/.git" && pwd -P)
+cat >"$external_bin/git" <<'SH'
+#!/bin/sh
+set -eu
+[ "$1" = -C ]
+case "$3 $4" in
+  'rev-parse --git-common-dir') printf '%s\n' "$EXTERNAL_GIT_COMMON" ;;
+  'rev-parse --show-toplevel') printf '%s\n' "$EXTERNAL_WORKTREE" ;;
+  *) exit 64 ;;
+esac
+SH
+chmod 0755 "$external_bin/git"
+(
+  cd "$external_repo/subdir"
+  env PATH="$external_bin:$tmp/bin:$PATH" CONTAINER_TOOLS_ENGINE=fake-engine \
+    CONTAINER_TOOLS_PLATFORM=linux/amd64 \
+    CONTAINER_TOOLS_STORAGE=redmine-test-storage \
+    CONTAINER_TOOLS_TEST_VOLUME="$tmp/volume" \
+    CONTAINER_TOOLS_TEST_LOG="$log" \
+    EXTERNAL_GIT_COMMON="$external_common_physical" \
+    EXTERNAL_WORKTREE="$external_repo_physical" \
+    "$external_repo/scripts/container-tools" true
+)
+grep -F -- "--volume $external_repo_physical:$external_repo_physical" "$log" \
+  >/dev/null || fail "external worktree root was not mounted"
+grep -F -- "--volume $external_common_physical:$external_common_physical" "$log" \
+  >/dev/null || fail "external worktree common Git directory was not mounted"
 
 if printf '%s\n' "$run" | grep -F -- "--rm" >/dev/null; then
   fail "detached container must not use --rm"

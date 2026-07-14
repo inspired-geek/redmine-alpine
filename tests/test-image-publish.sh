@@ -214,14 +214,19 @@ FAKE_PROBE_STATUS=present FAKE_INSPECT_MISMATCH_TAG=5.1.13 run_publish \
   --image ghcr.io/inspired-geek/redmine-alpine >"$tmp/mismatch.out" 2>"$tmp/mismatch.err"
 status=$?
 set -e
-[ "$status" -eq 1 ] || fail "immutable mismatch status changed"
+[ "$status" -eq 0 ] ||
+  fail "an existing immutable tag blocked its moving tag"
 grep -F \
-  "profile=5.1 phase=verify kind=immutable tag=5.1.13 expected=$expected_digest actual=" \
+  "image-publish: immutable tag preserved profile=5.1 tag=5.1.13 remote=" \
   "$tmp/mismatch.err" >/dev/null ||
-  fail "immutable mismatch diagnostic changed"
-if grep -F 'skopeo copy' "$tmp/skopeo.log" >/dev/null; then
-  fail "immutable mismatch still copied a tag"
+  fail "immutable preservation diagnostic is missing"
+[ "$(wc -l <"$tmp/skopeo.log" | tr -d ' ')" -eq 3 ] ||
+  fail "moving tag was not published after preserving an immutable tag"
+if grep -F 'skopeo copy' "$tmp/skopeo.log" | grep -F ':5.1.13' >/dev/null; then
+  fail "existing immutable tag was overwritten"
 fi
+grep -F 'skopeo copy' "$tmp/skopeo.log" | grep -F ':5.1' >/dev/null ||
+  fail "moving tag was not updated after immutable preservation"
 
 : >"$tmp/skopeo.log"
 set +e

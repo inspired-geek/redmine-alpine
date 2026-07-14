@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Validate repository contracts
         shell: bash
@@ -31,19 +31,21 @@ jobs:
           for test in tests/test-*.sh; do
             "$test"
           done
+          ruby tests/test-runtime-config.rb
           tests/validate-images.sh
 
       - name: Generate mandatory image matrix
         id: matrix
         shell: bash
         run: |
-          echo "value=$(scripts/image-catalog matrix)" >> "$GITHUB_OUTPUT"
+          matrix=$(scripts/image-catalog matrix)
+          printf 'value=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
       - name: Resolve trunk once
         run: scripts/resolve-trunk --output artifacts/resolution/trunk.json
 
       - name: Preserve resolved trunk inputs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: trunk-resolution
           path: artifacts/resolution/trunk.json
@@ -70,10 +72,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Restore resolved trunk inputs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: trunk-resolution
           path: artifacts/resolution
@@ -109,6 +111,16 @@ jobs:
             --index-archive "$ARTIFACT_DIR/rootfs.index.oci.tar" \
             --output "$ARTIFACT_DIR/metrics.json" \
             "${resolution_args[@]}"
+
+      - name: Exercise zstd:chunked publication candidate
+        shell: bash
+        env:
+          IMAGE_PREFLIGHT_DIRECT_PODMAN: 1
+        run: |
+          set -euo pipefail
+          scripts/image-preflight "$PROFILE" \
+            --index-archive "$ARTIFACT_DIR/rootfs.index.oci.tar" \
+            --metrics "$ARTIFACT_DIR/metrics.json"
 
       - name: Load gzip compatibility image
         shell: bash
@@ -149,7 +161,7 @@ jobs:
         run: tests/smoke-image.sh "$PROFILE" "$LOCAL_IMAGE" mariadb
 
       - name: Upload verified publication candidate
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: redmine-${{ matrix.profile }}
           path: |

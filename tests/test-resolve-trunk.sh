@@ -20,6 +20,8 @@ cat >"$tmp/bin/git" <<'SH'
 #!/bin/sh
 set -eu
 printf 'git\n' >>"$TRUNK_TEST_CALLS"
+attempt=$(grep -c '^git$' "$TRUNK_TEST_CALLS")
+[ "$attempt" -ge 3 ] || exit 75
 printf '%s\trefs/heads/master\n' 0123456789abcdef0123456789abcdef01234567
 SH
 
@@ -99,6 +101,7 @@ fi
 
 resolution=$tmp/resolution.json
 env PATH="$tmp/bin:$PATH" TRUNK_TEST_CALLS="$calls" \
+  TRUNK_GIT_RETRY_DELAY_SECONDS=0 \
   TRUNK_CONTAINER_TOOLS="$tmp/bin/container-tools" \
   "$resolver" --output "$resolution"
 
@@ -127,8 +130,10 @@ ruby -rjson -rdigest -rtime -e '
 ' "$resolution" 'resolved trunk archive
 '
 
-[ "$(wc -l <"$calls" | tr -d ' ')" -eq 5 ] ||
-  fail "resolver did not perform exactly five external calls"
+[ "$(grep -c '^git$' "$calls")" -eq 3 ] ||
+  fail "resolver did not retry git ls-remote twice"
+[ "$(wc -l <"$calls" | tr -d ' ')" -eq 7 ] ||
+  fail "resolver did not perform exactly seven external calls"
 registry_tool=$(
   ruby -rjson -e \
     'print JSON.parse(File.read(ARGV.fetch(0))).dig("tool_policy", "registry_tool")' \

@@ -186,6 +186,25 @@ done
 
 bundle=$(root_path /usr/local/bundle)
 app=$(root_path /usr/src/redmine)
+owner_id() {
+  LC_ALL=C ls -nd "$1" | awk '{ print $3 }'
+}
+runtime_owner=$(owner_id "$(root_path /)")
+for immutable in \
+  "$app" \
+  "$app/Gemfile" \
+  "$app/config/puma.rb" \
+  "$bundle" \
+  "$bundle/bin/bundle"
+do
+  [ "$(owner_id "$immutable")" -eq "$runtime_owner" ] ||
+    fail "runtime code is not owned by the runtime root owner: $immutable"
+  if find "$immutable" -maxdepth 0 -perm -020 -print | grep -q . ||
+     find "$immutable" -maxdepth 0 -perm -002 -print | grep -q .
+  then
+    fail "runtime code is group/world-writable: $immutable"
+  fi
+done
 for residue in \
   "$bundle/cache" \
   "$bundle/doc" \

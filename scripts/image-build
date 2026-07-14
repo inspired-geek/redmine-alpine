@@ -104,10 +104,10 @@ qualify_image_reference() {
   esac
 }
 
+tool_policy=$("$root/scripts/image-catalog" tool-policy)
 source_base=$(
-  ruby -rjson -e \
-    'print JSON.parse(File.read(ARGV.fetch(0))).dig("tool_policy", "source_base")' \
-    "$root/build/images.json"
+  printf '%s' "$tool_policy" |
+    ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("source_base")'
 )
 source_base=$(qualify_image_reference "$source_base")
 profile_base=$(qualify_image_reference "$(json_value base.reference)")

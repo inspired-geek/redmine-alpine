@@ -38,12 +38,19 @@ is_protected() {
         exit 64
         ;;
     esac
+    while [ "$keep" != / ] && [ "${keep%/}" != "$keep" ]; do
+      keep=${keep%/}
+    done
     keep_name=${keep##*/}
     keep_parent=${keep%/*}
     [ -n "$keep_parent" ] || keep_parent=/
     if [ -d "$keep_parent" ]; then
       keep_parent=$(CDPATH= cd -- "$keep_parent" && pwd -P)
-      keep=$keep_parent/$keep_name
+      if [ "$keep_parent" = / ]; then
+        keep=/$keep_name
+      else
+        keep=$keep_parent/$keep_name
+      fi
     fi
     case $candidate in
       "$keep"|"$keep"/*) return 0 ;;

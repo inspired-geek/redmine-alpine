@@ -192,6 +192,7 @@ assert_running_application() {
     ' >/dev/null || fail "Rails application/plugin contract failed in $container"
 
   "$engine" exec "$container" sh -c '
+    set -eu
     test -s public/plugin_assets/smoke_plugin/stylesheets/smoke.css
     test -s public/themes/smoke_theme/stylesheets/application.css
   ' || fail "plugin assets or theme are missing in $container"
@@ -212,6 +213,7 @@ configured_entrypoint=$(
   fail "unexpected ENTRYPOINT: $configured_entrypoint"
 
 "$engine" run --rm --entrypoint sh "$image" -c '
+  set -eu
   test ! -e Gemfile.local
   bundle check
 ' || fail "runtime Gemfile is not canonical or disagrees with Gemfile.lock"
@@ -267,6 +269,7 @@ esac
 "$engine" run --rm --entrypoint sh \
   -e BUILD_PACKAGES="$build_packages" \
   "$image" -c '
+    set -eu
     test "$(id -u)" = 1001
     test "$(id -g)" = 0
     for package in $BUILD_PACKAGES .build-deps .verify-deps; do
@@ -278,6 +281,7 @@ esac
   ' || fail "UID/GID or build-dependency cleanup check failed"
 
 "$engine" run --rm --entrypoint sh "$image" -c '
+  set -eu
   output=$(mktemp -d)
   convert -size 2x2 xc:red "$output/pixel.png"
   identify "$output/pixel.png" >/dev/null
@@ -306,15 +310,18 @@ assert_runtime_paths_writable() {
     --user "$user_spec" \
     --entrypoint sh \
     "$image" -c '
+      set -eu
       for path in \
-        files log plugins public/plugin_assets public/themes sqlite tmp tmp/pdf tmp/pids
+        files log plugins public/assets public/plugin_assets public/themes \
+        sqlite tmp tmp/pdf tmp/pids
       do
         test -w "$path" || {
           printf "path is not writable: %s\n" "$path" >&2
           exit 1
         }
       done
-      touch files/.smoke sqlite/.smoke tmp/.smoke public/plugin_assets/.smoke
+      touch files/.smoke sqlite/.smoke tmp/.smoke \
+        public/assets/.smoke public/plugin_assets/.smoke
     '
 }
 
@@ -322,6 +329,31 @@ assert_runtime_paths_writable 1001:0 ||
   fail "runtime paths are not writable as UID 1001"
 assert_runtime_paths_writable 12345:0 ||
   fail "runtime paths are not group-writable for an arbitrary UID in group 0"
+
+assert_runtime_code_read_only() {
+  user_spec=$1
+  "$engine" run --rm \
+    --user "$user_spec" \
+    --entrypoint sh \
+    "$image" -c '
+      set -eu
+      for path in \
+        /usr/src/redmine /usr/src/redmine/Gemfile \
+        /usr/src/redmine/config/puma.rb /usr/local/bundle \
+        /usr/local/bundle/bin/bundle
+      do
+        test ! -w "$path" || {
+          printf "runtime code is writable: %s\n" "$path" >&2
+          exit 1
+        }
+      done
+    '
+}
+
+assert_runtime_code_read_only 1001:0 ||
+  fail "runtime code is writable as UID 1001"
+assert_runtime_code_read_only 12345:0 ||
+  fail "runtime code is group-writable for an arbitrary UID in group 0"
 
 missing_secret_log=$tmp/missing-secret.log
 if "$engine" run --rm "$image" true >"$missing_secret_log" 2>&1; then
@@ -367,6 +399,7 @@ done
   -v "$plugins_volume:/plugins" \
   -v "$root/tests/fixtures/smoke_plugin:/fixture:ro" \
   "$image" -c '
+    set -eu
     mkdir -p /plugins/smoke_plugin
     cp -R /fixture/. /plugins/smoke_plugin/
     chown -R 1001:0 /plugins
@@ -377,6 +410,7 @@ done
   -v "$themes_volume:/themes" \
   -v "$root/tests/fixtures/smoke_theme:/fixture:ro" \
   "$image" -c '
+    set -eu
     mkdir -p /themes/smoke_theme
     cp -R /fixture/. /themes/smoke_theme/
     chown -R 1001:0 /themes
@@ -453,6 +487,7 @@ then
 fi
 
 "$engine" exec "$first_container" sh -c '
+  set -eu
   printf "%s\n" "redmine-alpine attachment smoke" >files/smoke-attachment.txt
 ' || fail "attachment volume is not writable"
 
@@ -465,6 +500,7 @@ fi
   -v "$themes_volume:/usr/src/redmine/public/themes" \
   -v "$sqlite_volume:/usr/src/redmine/sqlite" \
   "$image" -c '
+    set -eu
     grep -F "redmine-alpine attachment smoke" files/smoke-attachment.txt >/dev/null
     test -s public/plugin_assets/smoke_plugin/stylesheets/smoke.css
     test -s public/themes/smoke_theme/stylesheets/application.css

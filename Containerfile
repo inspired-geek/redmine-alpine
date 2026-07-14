@@ -2,6 +2,11 @@ ARG SOURCE_BASE
 ARG BUILDER_BASE
 ARG RUNTIME_BASE
 
+FROM ${SOURCE_BASE} AS helpers
+
+COPY scripts/apk-add scripts/gemfile-canonicalize \
+  scripts/runtime-cleanup scripts/runtime-verify /usr/local/bin/
+
 FROM ${SOURCE_BASE} AS source
 
 ARG SOURCE_URL
@@ -12,10 +17,9 @@ ARG BUNDLER_VERSION
 ARG MARIADB_CONNECTOR_SOURCE_SHA256
 ARG MARIADB_CONNECTOR_SOURCE_URL
 
-COPY scripts/apk-add /usr/local/bin/apk-add
-
-RUN set -eux; \
-  /usr/local/bin/apk-add ca-certificates coreutils curl tar; \
+RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+  set -eux; \
+  /run/redmine-tools/apk-add ca-certificates coreutils curl tar; \
   mkdir -p /opt/mariadb-connector-source /opt/redmine-source; \
   curl \
     --fail-with-body \
@@ -97,11 +101,10 @@ WORKDIR /usr/src/redmine
 COPY --from=source /opt/redmine-source/ /usr/src/redmine/
 COPY --from=source /opt/mariadb-connector-source/ /tmp/mariadb-connector-source/
 COPY --from=source /opt/bundler.gem /tmp/bundler.gem
-COPY scripts/apk-add /usr/local/bin/apk-add
-
-RUN set -eux; \
-  /usr/local/bin/apk-add $RUNTIME_PACKAGES; \
-  /usr/local/bin/apk-add --virtual .build-deps $BUILD_PACKAGES; \
+RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+  set -eux; \
+  /run/redmine-tools/apk-add $RUNTIME_PACKAGES; \
+  /run/redmine-tools/apk-add --virtual .build-deps $BUILD_PACKAGES; \
   test "$(ruby -e 'print RUBY_VERSION')" = "$EXPECTED_RUBY_VERSION"; \
   bundle_jobs=$(awk '/^processor/ { count += 1 } END { print count }' /proc/cpuinfo); \
   [ "$bundle_jobs" -ge 1 ] || bundle_jobs=2; \
@@ -158,28 +161,26 @@ RUN set -eux; \
     files \
     log \
     plugins \
+    public/assets \
     public/plugin_assets \
     public/themes \
     sqlite \
     tmp/pdf \
     tmp/pids
 
-COPY scripts/gemfile-canonicalize /usr/local/bin/gemfile-canonicalize
+RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+  set -eux; \
+  /run/redmine-tools/gemfile-canonicalize Gemfile Gemfile.local; \
+  bundle check
 
-RUN set -eux; \
-  /usr/local/bin/gemfile-canonicalize Gemfile Gemfile.local; \
-  bundle check; \
-  rm -f /usr/local/bin/gemfile-canonicalize
-
-COPY scripts/runtime-cleanup /usr/local/bin/runtime-cleanup
 COPY config/production.append.rb /tmp/redmine-alpine-production.rb
 
-RUN set -eux; \
+RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+  set -eux; \
   cat /tmp/redmine-alpine-production.rb >> config/environments/production.rb; \
   rm -f /tmp/redmine-alpine-production.rb; \
   RUNTIME_CLEANUP_KEEP_PATHS="$RUNTIME_CLEANUP_KEEP_PATHS" \
-    /usr/local/bin/runtime-cleanup "$GEM_HOME" /usr/src/redmine; \
-  rm -f /usr/local/bin/runtime-cleanup; \
+    /run/redmine-tools/runtime-cleanup "$GEM_HOME" /usr/src/redmine; \
   rm -f "$GEM_HOME"/gems/rbpdf-font-*/lib/fonts/ttf2ufm/ttf2ufm; \
   scanelf \
     --needed \
@@ -199,39 +200,18 @@ RUN set -eux; \
 
 FROM ${RUNTIME_BASE} AS runtime
 
-ARG BUILD_DATE
 ARG BUILD_PACKAGES
 ARG BUNDLER_VERSION
 ARG EXPECTED_REDMINE_VERSION
 ARG EXPECTED_RUBY_VERSION
 ARG FEATURE_PACKAGES
 ARG MARIADB_CONNECTOR_VERSION
-ARG OCI_AUTHORS
-ARG OCI_DESCRIPTION
-ARG OCI_DOCUMENTATION
-ARG OCI_LICENSES
-ARG OCI_SOURCE
-ARG OCI_TITLE
-ARG OCI_URL
-ARG OCI_VERSION
 ARG PUMA_VERSION
 ARG RUNTIME_CLEANUP_KEEP_PATHS
 ARG RUNTIME_COMMANDS
 ARG RUNTIME_PACKAGES
 ARG RUNTIME_PATHS
 ARG RUNTIME_REQUIRES
-ARG VCS_REF
-
-LABEL org.opencontainers.image.authors="$OCI_AUTHORS" \
-  org.opencontainers.image.created="$BUILD_DATE" \
-  org.opencontainers.image.description="$OCI_DESCRIPTION" \
-  org.opencontainers.image.documentation="$OCI_DOCUMENTATION" \
-  org.opencontainers.image.licenses="$OCI_LICENSES" \
-  org.opencontainers.image.revision="$VCS_REF" \
-  org.opencontainers.image.source="$OCI_SOURCE" \
-  org.opencontainers.image.title="$OCI_TITLE" \
-  org.opencontainers.image.url="$OCI_URL" \
-  org.opencontainers.image.version="$OCI_VERSION"
 
 ENV BUNDLE_SILENCE_ROOT_WARNING=1 \
   BUNDLE_WITHOUT=development:test \
@@ -248,12 +228,11 @@ ENV BUNDLE_SILENCE_ROOT_WARNING=1 \
 
 WORKDIR /usr/src/redmine
 
-COPY scripts/apk-add /usr/local/bin/apk-add
-
-RUN set -eux; \
+RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+  set -eux; \
   adduser -D -H -u 1001 -G root redmine; \
   mkdir -p "$HOME"; \
-  /usr/local/bin/apk-add $FEATURE_PACKAGES $RUNTIME_PACKAGES; \
+  /run/redmine-tools/apk-add $FEATURE_PACKAGES $RUNTIME_PACKAGES; \
   if ! command -v convert >/dev/null 2>&1; then \
     imagemagick6_convert=$(command -v convert-6); \
     ln -s "$imagemagick6_convert" /usr/local/bin/convert; \
@@ -266,44 +245,29 @@ RUN set -eux; \
 COPY --from=builder /tmp/runtime-deps /tmp/runtime-deps
 COPY --from=builder /opt/mariadb-connector-runtime/ /opt/mariadb-connector/
 
-RUN set -eux; \
+RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+  set -eux; \
   if [ -s /tmp/runtime-deps ]; then \
-    /usr/local/bin/apk-add --virtual .redmine-rundeps \
+    /run/redmine-tools/apk-add --virtual .redmine-rundeps \
       $(cat /tmp/runtime-deps); \
   fi; \
   rm -f /tmp/runtime-deps
 
-COPY --from=builder --chown=1001:0 \
-  /usr/local/bundle/ /usr/local/bundle/
-COPY --from=builder --chown=1001:0 \
-  /usr/src/redmine/ /usr/src/redmine/
-COPY --chown=1001:0 config/database.yml config/secrets.yml config/puma.rb \
+COPY --from=builder /usr/local/bundle/ /usr/local/bundle/
+COPY --from=builder /usr/src/redmine/ /usr/src/redmine/
+COPY config/database.yml config/secrets.yml config/puma.rb \
   /usr/src/redmine/config/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint
-COPY scripts/runtime-verify /usr/local/bin/runtime-verify
 
-RUN set -eux; \
-  chmod 0755 /usr/local/bin/docker-entrypoint; \
+RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+  set -eux; \
+  chmod -R go-w /usr/local/bundle /usr/src/redmine; \
   chown -R 1001:0 \
-    "$HOME" \
-    files \
-    log \
-    plugins \
-    public/plugin_assets \
-    public/themes \
-    sqlite \
-    tmp; \
+    "$HOME" files log plugins public/assets public/plugin_assets \
+    public/themes sqlite tmp; \
   chmod -R g=u \
-    "$HOME" \
-    files \
-    log \
-    plugins \
-    public/plugin_assets \
-    public/themes \
-    sqlite \
-    tmp
-
-RUN set -eux; \
+    "$HOME" files log plugins public/assets public/plugin_assets \
+    public/themes sqlite tmp; \
   export \
     BUILD_PACKAGES \
     EXPECTED_REDMINE_VERSION \
@@ -318,11 +282,32 @@ RUN set -eux; \
   export EXPECTED_BUNDLER_VERSION="$BUNDLER_VERSION"; \
   export EXPECTED_MARIADB_CONNECTOR_VERSION="$MARIADB_CONNECTOR_VERSION"; \
   export EXPECTED_PUMA_VERSION="$PUMA_VERSION"; \
-  /usr/local/bin/apk-add --virtual .verify-deps pax-utils; \
-  /usr/local/bin/runtime-verify elf; \
+  /run/redmine-tools/apk-add --virtual .verify-deps pax-utils; \
+  /run/redmine-tools/runtime-verify elf; \
   apk del --no-network .verify-deps; \
-  /usr/local/bin/runtime-verify contract; \
-  rm -f /usr/local/bin/apk-add /usr/local/bin/runtime-verify
+  /run/redmine-tools/runtime-verify contract
+
+ARG BUILD_DATE
+ARG OCI_AUTHORS
+ARG OCI_DESCRIPTION
+ARG OCI_DOCUMENTATION
+ARG OCI_LICENSES
+ARG OCI_SOURCE
+ARG OCI_TITLE
+ARG OCI_URL
+ARG OCI_VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.authors="$OCI_AUTHORS" \
+  org.opencontainers.image.created="$BUILD_DATE" \
+  org.opencontainers.image.description="$OCI_DESCRIPTION" \
+  org.opencontainers.image.documentation="$OCI_DOCUMENTATION" \
+  org.opencontainers.image.licenses="$OCI_LICENSES" \
+  org.opencontainers.image.revision="$VCS_REF" \
+  org.opencontainers.image.source="$OCI_SOURCE" \
+  org.opencontainers.image.title="$OCI_TITLE" \
+  org.opencontainers.image.url="$OCI_URL" \
+  org.opencontainers.image.version="$OCI_VERSION"
 
 USER 1001
 

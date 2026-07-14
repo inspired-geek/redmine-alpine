@@ -70,6 +70,26 @@ env PATH="$tmp/bin:$PATH" IMAGE_BUILD_DIRECT_PODMAN=1 \
 [ -s "$output/rootfs.oci.tar" ] || fail "rootfs OCI archive missing"
 [ -s "$output/build.json" ] || fail "build metadata missing"
 
+custom_catalog=$tmp/custom-images.json
+custom_source_base=$(
+  ruby -rjson -e '
+    value = JSON.parse(File.read(ARGV.fetch(0)))
+    value["tool_policy"]["source_base"] = value.dig("tool_policy", "registry_tool")
+    File.write(ARGV.fetch(1), JSON.generate(value))
+    print value.dig("tool_policy", "source_base")
+  ' "$root/build/images.json" "$custom_catalog"
+)
+custom_log=$tmp/custom-podman.log
+env PATH="$tmp/bin:$PATH" IMAGE_BUILD_DIRECT_PODMAN=1 \
+  IMAGE_BUILD_TEST_LOG="$custom_log" IMAGE_CATALOG="$custom_catalog" \
+  "$builder" 5.1 \
+  --platform linux/amd64 \
+  --tag localhost/redmine-alpine:custom-catalog \
+  --output-dir "$tmp/custom-output" \
+  --revision 0123456789abcdef0123456789abcdef01234567
+grep -F -- "SOURCE_BASE=$custom_source_base" "$custom_log" >/dev/null ||
+  fail "IMAGE_CATALOG source base override was ignored"
+
 bud=$(grep '^build ' "$log")
 push=$(grep '^push ' "$log")
 printf '%s\n' "$push" | grep -F \
@@ -230,12 +250,9 @@ grep -F 'COPY --from=builder /opt/mariadb-connector-runtime/' \
 grep -F 'LD_LIBRARY_PATH=/opt/mariadb-connector/lib/mariadb' \
   "$containerfile" >/dev/null ||
   fail "source-built MariaDB Connector/C is not preferred at runtime"
-grep -F 'COPY scripts/gemfile-canonicalize /usr/local/bin/gemfile-canonicalize' \
+grep -F '/run/redmine-tools/gemfile-canonicalize Gemfile Gemfile.local' \
   "$containerfile" >/dev/null ||
-  fail "tested Gemfile canonicalizer was not copied after bundle installation"
-grep -F '/usr/local/bin/gemfile-canonicalize Gemfile Gemfile.local' \
-  "$containerfile" >/dev/null ||
-  fail "temporary compatibility overrides were not canonicalized"
+  fail "mounted Gemfile canonicalizer was not executed"
 grep -F 'bundle check' "$containerfile" >/dev/null ||
   fail "the canonical runtime Gemfile must be checked against Gemfile.lock"
 grep -F 'RUBYOPT=-rlogger' "$containerfile" >/dev/null ||
@@ -257,9 +274,20 @@ builder_stage=$(
 if printf '%s\n' "$builder_stage" | grep -F 'FEATURE_PACKAGES' >/dev/null; then
   fail "runtime-only feature packages must not be installed in the builder"
 fi
-grep -F 'COPY scripts/apk-add /usr/local/bin/apk-add' "$containerfile" >/dev/null ||
-  fail "retrying APK installer was not copied into the source stage"
-[ "$(grep -F -c '/usr/local/bin/apk-add' "$containerfile")" -ge 7 ] ||
+grep -F 'FROM ${SOURCE_BASE} AS helpers' "$containerfile" >/dev/null ||
+  fail "ephemeral helper stage is missing"
+runtime_stage=$(
+  awk '
+    /^FROM .* AS runtime$/ { in_runtime = 1 }
+    in_runtime { print }
+  ' "$containerfile"
+)
+if printf '%s\n' "$runtime_stage" |
+  grep -E '^COPY scripts/(apk-add|runtime-verify)' >/dev/null
+then
+  fail "runtime helpers must not be copied into final filesystem layers"
+fi
+[ "$(grep -F -c '/run/redmine-tools/apk-add' "$containerfile")" -ge 5 ] ||
   fail "all APK transactions must use the retry helper"
 if grep -F 'apk add --no-cache' "$containerfile" >/dev/null; then
   fail "direct APK transactions bypass the retry helper"
@@ -271,23 +299,31 @@ grep -F 'imagemagick6_identify=$(command -v identify-6)' "$containerfile" >/dev/
 grep -F 'rm -f "$GEM_HOME"/gems/rbpdf-font-*/lib/fonts/ttf2ufm/ttf2ufm' \
   "$containerfile" >/dev/null ||
   fail "non-musl rbpdf-font helper was not removed before dependency scanning"
-grep -F 'COPY scripts/runtime-cleanup /usr/local/bin/runtime-cleanup' \
+grep -F '/run/redmine-tools/runtime-cleanup "$GEM_HOME" /usr/src/redmine' \
   "$containerfile" >/dev/null ||
-  fail "shared runtime cleanup was not copied into the builder"
-grep -F '/usr/local/bin/runtime-cleanup "$GEM_HOME" /usr/src/redmine' \
-  "$containerfile" >/dev/null ||
-  fail "shared runtime cleanup was not executed"
-grep -F 'COPY scripts/runtime-verify /usr/local/bin/runtime-verify' \
-  "$containerfile" >/dev/null ||
-  fail "shared runtime verifier was not copied"
-grep -F '/usr/local/bin/apk-add --virtual .verify-deps pax-utils' \
+  fail "mounted runtime cleanup was not executed"
+grep -F '/run/redmine-tools/apk-add --virtual .verify-deps pax-utils' \
   "$containerfile" >/dev/null ||
   fail "ELF verifier dependency was not installed ephemerally"
-grep -F '/usr/local/bin/runtime-verify elf' "$containerfile" >/dev/null ||
+grep -F '/run/redmine-tools/runtime-verify elf' "$containerfile" >/dev/null ||
   fail "ELF closure was not verified"
-grep -F '/usr/local/bin/runtime-verify contract' "$containerfile" >/dev/null ||
+grep -F '/run/redmine-tools/runtime-verify contract' "$containerfile" >/dev/null ||
   fail "runtime content contract was not verified"
-if grep -E 'case .*REDMINE|if .*REDMINE_VERSION|REDMINE_VERSION.*(3\\.4|4\\.0|5\\.1)' \
+if grep -F -- '--chown=1001:0' "$containerfile" >/dev/null; then
+  fail "runtime application code must remain root-owned"
+fi
+grep -F 'chmod -R go-w /usr/local/bundle /usr/src/redmine' \
+  "$containerfile" >/dev/null ||
+  fail "runtime application and bundle must reject group/world writes"
+last_run=$(grep -n '^RUN ' "$containerfile" | tail -1 | cut -d: -f1)
+label_line=$(grep -n '^LABEL org.opencontainers.image.authors=' "$containerfile" |
+  cut -d: -f1)
+[ "$label_line" -gt "$last_run" ] ||
+  fail "volatile OCI labels must follow all filesystem build steps"
+vcs_arg_line=$(grep -n '^ARG VCS_REF$' "$containerfile" | cut -d: -f1)
+[ "$vcs_arg_line" -gt "$last_run" ] ||
+  fail "volatile VCS_REF argument must not invalidate filesystem layers"
+if grep -E 'case .*REDMINE|if .*REDMINE_VERSION|REDMINE_VERSION.*(3\.4|4\.0|5\.1)' \
   "$containerfile" >/dev/null; then
   fail "Containerfile branches on Redmine series"
 fi
