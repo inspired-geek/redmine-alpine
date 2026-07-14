@@ -1,0 +1,162 @@
+---
+name: Reusable image build and test
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_call:
+    outputs:
+      matrix:
+        description: Mandatory image profile matrix
+        value: ${{ jobs.prepare.outputs.matrix }}
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Validate catalog and resolve inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate repository contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in tests/test-*.sh; do
+            "$test"
+          done
+          tests/validate-images.sh
+
+      - name: Generate mandatory image matrix
+        id: matrix
+        shell: bash
+        run: |
+          echo "value=$(scripts/image-catalog matrix)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve trunk once
+        run: scripts/resolve-trunk --output artifacts/resolution/trunk.json
+
+      - name: Preserve resolved trunk inputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: trunk-resolution
+          path: artifacts/resolution/trunk.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  build:
+    name: Build and test Redmine ${{ matrix.profile }}
+    needs: [prepare]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      PROFILE: ${{ matrix.profile }}
+      PLATFORM: linux/amd64
+      LOCAL_IMAGE: >-
+        localhost/redmine-alpine:${{ matrix.profile }}-${{ github.run_id }}
+      ARTIFACT_DIR: >-
+        artifacts/images/${{ matrix.profile }}/linux-amd64
+      RESOLUTION: artifacts/resolution/trunk.json
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Restore resolved trunk inputs
+        uses: actions/download-artifact@v8
+        with:
+          name: trunk-resolution
+          path: artifacts/resolution
+
+      - name: Build, compress, and measure candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          resolution_args=()
+          if [[ "$PROFILE" == trunk ]]; then
+            resolution_args=(--resolution "$RESOLUTION")
+          fi
+
+          scripts/image-build "$PROFILE" \
+            --platform "$PLATFORM" \
+            --tag "$LOCAL_IMAGE" \
+            --output-dir "$ARTIFACT_DIR" \
+            --revision "$GITHUB_SHA" \
+            --no-cache \
+            "${resolution_args[@]}"
+
+          scripts/image-compress "$PROFILE" \
+            --image "$LOCAL_IMAGE" \
+            --gzip-archive "$ARTIFACT_DIR/rootfs.oci.tar" \
+            --output-dir "$ARTIFACT_DIR" \
+            "${resolution_args[@]}"
+
+          zstd_archive="$ARTIFACT_DIR/rootfs.zstd-chunked.oci.tar"
+          scripts/image-metrics "$PROFILE" \
+            --gzip-archive "$ARTIFACT_DIR/rootfs.oci.tar" \
+            --zstd-chunked-archive "$zstd_archive" \
+            --index-archive "$ARTIFACT_DIR/rootfs.index.oci.tar" \
+            --output "$ARTIFACT_DIR/metrics.json" \
+            "${resolution_args[@]}"
+
+      - name: Load gzip compatibility image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_id=$(
+            podman pull --quiet "oci-archive:$ARTIFACT_DIR/rootfs.oci.tar"
+          )
+          podman tag "$image_id" "$LOCAL_IMAGE"
+
+      - name: Verify OCI labels
+        shell: bash
+        env:
+          CONTAINER_ENGINE: podman
+        run: |
+          set -euo pipefail
+          expected_version=$(
+            scripts/image-catalog profile "$PROFILE" |
+              ruby -rjson -e \
+                'print JSON.parse(STDIN.read).dig("oci", "version")'
+          )
+          created=$(ruby -rjson -e \
+            'print JSON.parse(File.read(ARGV.fetch(0))).fetch("created")' \
+            "$ARTIFACT_DIR/build.json")
+          tests/verify-oci-labels.sh \
+            "$LOCAL_IMAGE" "$expected_version" "$GITHUB_SHA" "$created"
+
+      - name: Smoke test with SQLite
+        env:
+          CONTAINER_ENGINE: podman
+          EXPECTED_ARCH: amd64
+        run: tests/smoke-image.sh "$PROFILE" "$LOCAL_IMAGE" sqlite
+
+      - name: Smoke test with MariaDB
+        env:
+          CONTAINER_ENGINE: podman
+          EXPECTED_ARCH: amd64
+        run: tests/smoke-image.sh "$PROFILE" "$LOCAL_IMAGE" mariadb
+
+      - name: Upload verified publication candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: redmine-${{ matrix.profile }}
+          path: |
+            ${{ env.ARTIFACT_DIR }}/rootfs.index.oci.tar
+            ${{ env.ARTIFACT_DIR }}/metrics.json
+            ${{ env.ARTIFACT_DIR }}/build.json
+            ${{ env.ARTIFACT_DIR }}/compression.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0

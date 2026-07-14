@@ -140,40 +140,79 @@ profiles.each do |profile|
 end
 RUBY
 
-workflow=.github/workflows/build.yml
-assert_file "$workflow"
-assert_contains "$workflow" 'tests/validate-images.sh'
-assert_not_contains "$workflow" modern
-assert_not_contains "$workflow" continue-on-error
-assert_contains "$workflow" 'scripts/image-catalog matrix'
-assert_contains "$workflow" 'scripts/resolve-trunk'
-assert_contains "$workflow" 'scripts/image-build'
-assert_contains "$workflow" 'scripts/image-compress'
-assert_contains "$workflow" 'scripts/image-metrics'
-assert_contains "$workflow" 'scripts/image-publish'
-assert_contains "$workflow" 'tests/smoke-image.sh "$PROFILE" "$LOCAL_IMAGE" sqlite'
-assert_contains "$workflow" 'tests/smoke-image.sh "$PROFILE" "$LOCAL_IMAGE" mariadb'
-assert_contains "$workflow" 'actions/checkout@v6'
-assert_contains "$workflow" 'actions/upload-artifact@v7'
-assert_contains "$workflow" 'actions/download-artifact@v8'
-assert_contains "$workflow" 'rootfs.index.oci.tar'
-assert_contains "$workflow" 'zstd_chunked_manifest_digest'
-assert_contains "$workflow" 'enable_partial_images = \"true\"'
-assert_not_contains "$workflow" redhat-actions/buildah-build
-assert_not_contains "$workflow" redhat-actions/push-to-registry
+ci_workflow=.github/workflows/build.yml
+pipeline_workflow=.github/workflows/image-pipeline.yml
+publish_workflow=.github/workflows/publish.yml
+
+for workflow in "$ci_workflow" "$pipeline_workflow" "$publish_workflow"; do
+  assert_file "$workflow"
+  assert_not_contains "$workflow" modern
+  assert_not_contains "$workflow" continue-on-error
+  assert_not_contains "$workflow" redhat-actions/buildah-build
+  assert_not_contains "$workflow" redhat-actions/push-to-registry
+done
+
+assert_contains "$ci_workflow" 'uses: ./.github/workflows/image-pipeline.yml'
+assert_not_contains "$ci_workflow" 'scripts/image-publish'
+assert_not_contains "$ci_workflow" 'push:'
+
+assert_contains "$pipeline_workflow" 'workflow_call:'
+assert_contains "$pipeline_workflow" 'tests/validate-images.sh'
+assert_contains "$pipeline_workflow" 'scripts/image-catalog matrix'
+assert_contains "$pipeline_workflow" 'scripts/resolve-trunk'
+assert_contains "$pipeline_workflow" 'scripts/image-build'
+assert_contains "$pipeline_workflow" 'scripts/image-compress'
+assert_contains "$pipeline_workflow" 'scripts/image-metrics'
+assert_not_contains "$pipeline_workflow" 'scripts/image-publish'
+assert_contains "$pipeline_workflow" 'tests/smoke-image.sh "$PROFILE" "$LOCAL_IMAGE" sqlite'
+assert_contains "$pipeline_workflow" 'tests/smoke-image.sh "$PROFILE" "$LOCAL_IMAGE" mariadb'
+assert_contains "$pipeline_workflow" 'actions/checkout@v6'
+assert_contains "$pipeline_workflow" 'actions/upload-artifact@v7'
+assert_contains "$pipeline_workflow" 'actions/download-artifact@v8'
+assert_contains "$pipeline_workflow" 'rootfs.index.oci.tar'
+
+assert_contains "$publish_workflow" 'branches: [master]'
+assert_not_contains "$publish_workflow" 'pull_request:'
+assert_contains "$publish_workflow" 'uses: ./.github/workflows/image-pipeline.yml'
+assert_contains "$publish_workflow" 'scripts/image-publish'
+assert_contains "$publish_workflow" 'actions/checkout@v6'
+assert_contains "$publish_workflow" 'actions/download-artifact@v8'
+assert_contains "$publish_workflow" 'rootfs.index.oci.tar'
+assert_contains "$publish_workflow" 'zstd_chunked_manifest_digest'
+assert_contains "$publish_workflow" 'enable_partial_images = \"true\"'
 
 ruby -rjson -ryaml <<'RUBY'
-workflow = YAML.safe_load(File.read(".github/workflows/build.yml"))
-raise "workflow permissions" unless workflow.fetch("permissions") == {"contents" => "read"}
-raise "publication may be cancelled" unless
-  workflow.dig("concurrency", "cancel-in-progress") == false
-raise "master publication is not queued" unless
-  workflow.dig("concurrency", "queue") == "max"
+ci = YAML.safe_load(File.read(".github/workflows/build.yml"))
+pipeline = YAML.safe_load(File.read(".github/workflows/image-pipeline.yml"))
+release = YAML.safe_load(File.read(".github/workflows/publish.yml"))
 
-jobs = workflow.fetch("jobs")
-prepare = jobs.fetch("prepare")
-build = jobs.fetch("build")
-publish = jobs.fetch("publish")
+def workflow_triggers(workflow)
+  workflow.fetch("on") { workflow.fetch(true) }
+end
+
+raise "CI trigger is not pull-request-only" unless
+  workflow_triggers(ci) == {"pull_request" => nil}
+raise "CI workflow permissions" unless ci.fetch("permissions") == {"contents" => "read"}
+raise "CI runs may be cancelled" unless ci.dig("concurrency", "cancel-in-progress") == false
+raise "CI runs are not queued" unless ci.dig("concurrency", "queue") == "max"
+raise "CI contains more than the reusable build call" unless ci.fetch("jobs").keys == ["images"]
+ci_call = ci.dig("jobs", "images")
+raise "CI does not call the shared pipeline" unless
+  ci_call.fetch("uses") == "./.github/workflows/image-pipeline.yml"
+raise "CI call can be skipped" if ci_call.key?("if")
+
+raise "shared pipeline is not reusable-only" unless
+  workflow_triggers(pipeline).keys == ["workflow_call"]
+raise "shared pipeline permissions" unless
+  pipeline.fetch("permissions") == {"contents" => "read"}
+raise "shared matrix output missing" unless
+  workflow_triggers(pipeline).dig("workflow_call", "outputs", "matrix", "value") ==
+    "${{ jobs.prepare.outputs.matrix }}"
+
+pipeline_jobs = pipeline.fetch("jobs")
+raise "shared pipeline job set changed" unless pipeline_jobs.keys.sort == %w[build prepare]
+prepare = pipeline_jobs.fetch("prepare")
+build = pipeline_jobs.fetch("build")
 raise "prepare matrix output" unless
   prepare.dig("outputs", "matrix") == "${{ steps.matrix.outputs.value }}"
 raise "build dependencies" unless Array(build.fetch("needs")) == ["prepare"]
@@ -189,12 +228,28 @@ raise "SQLite smoke missing" unless
 raise "MariaDB smoke missing" unless
   build_script.include?('tests/smoke-image.sh "$PROFILE" "$LOCAL_IMAGE" mariadb')
 
-raise "publish dependencies" unless Array(publish.fetch("needs")) == %w[prepare build]
-raise "publish condition" unless
-  publish.fetch("if") == "github.event_name == 'push' && github.ref == 'refs/heads/master'"
+raise "release trigger is not master-push-only" unless
+  workflow_triggers(release) == {"push" => {"branches" => ["master"]}}
+raise "release workflow permissions" unless
+  release.fetch("permissions") == {"contents" => "read"}
+raise "publication may be cancelled" unless
+  release.dig("concurrency", "cancel-in-progress") == false
+raise "master publication is not queued" unless
+  release.dig("concurrency", "queue") == "max"
+
+release_jobs = release.fetch("jobs")
+raise "release job set changed" unless release_jobs.keys.sort == %w[images publish]
+release_build = release_jobs.fetch("images")
+raise "release does not call the shared pipeline" unless
+  release_build.fetch("uses") == "./.github/workflows/image-pipeline.yml"
+raise "release build can be skipped" if release_build.key?("if")
+
+publish = release_jobs.fetch("publish")
+raise "publish dependencies" unless Array(publish.fetch("needs")) == ["images"]
+raise "publish job can be skipped" if publish.key?("if")
 raise "publish permission" unless publish.dig("permissions", "packages") == "write"
 raise "publish matrix" unless
-  publish.dig("strategy", "matrix") == "${{ fromJSON(needs.prepare.outputs.matrix) }}"
+  publish.dig("strategy", "matrix") == "${{ fromJSON(needs.images.outputs.matrix) }}"
 raise "publish may fail fast" unless publish.dig("strategy", "fail-fast") == false
 
 publish_script = publish.fetch("steps").map { |step| step.fetch("run", "") }.join("\n")
