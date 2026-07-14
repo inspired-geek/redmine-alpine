@@ -223,6 +223,13 @@ grep -F 'FROM ${BUILDER_BASE} AS builder' "$containerfile" >/dev/null ||
   fail "builder stage missing"
 grep -F 'FROM ${RUNTIME_BASE} AS runtime' "$containerfile" >/dev/null ||
   fail "runtime stage missing"
+[ -d "$root/plugins" ] || fail "build-time plugin directory is missing"
+plugins_copy_line=$(grep -n '^COPY plugins/ /usr/src/redmine/plugins/$' "$containerfile" |
+  cut -d: -f1)
+[ -n "$plugins_copy_line" ] || fail "build-time plugins are not copied into the builder"
+bundle_install_line=$(grep -n 'bundle install --jobs' "$containerfile" | cut -d: -f1)
+[ "$plugins_copy_line" -lt "$bundle_install_line" ] ||
+  fail "plugin Gemfiles must be present before bundle install"
 grep -F 'COPY --from=builder /usr/local/ /usr/local/' "$containerfile" >/dev/null ||
   fail "complete built Ruby runtime must be copied into the final image"
 grep -F -- '--recursive /usr/local /opt/mariadb-connector-runtime' \
@@ -283,8 +290,21 @@ builder_stage=$(
 if printf '%s\n' "$builder_stage" | grep -F 'FEATURE_PACKAGES' >/dev/null; then
   fail "runtime-only feature packages must not be installed in the builder"
 fi
-grep -F 'FROM ${SOURCE_BASE} AS helpers' "$containerfile" >/dev/null ||
-  fail "ephemeral helper stage is missing"
+for helper in apk gemfile cleanup verify; do
+  grep -F 'FROM ${SOURCE_BASE} AS '"$helper"'-helper' "$containerfile" >/dev/null ||
+    fail "isolated $helper helper stage is missing"
+done
+if grep -F 'FROM ${SOURCE_BASE} AS helpers' "$containerfile" >/dev/null; then
+  fail "unrelated helper scripts must not share a cache-invalidating stage"
+fi
+grep -F 'from=apk-helper' "$containerfile" >/dev/null ||
+  fail "APK transactions do not mount the isolated APK helper"
+grep -F 'from=gemfile-helper' "$containerfile" >/dev/null ||
+  fail "Gemfile canonicalization does not mount its isolated helper"
+grep -F 'from=cleanup-helper' "$containerfile" >/dev/null ||
+  fail "runtime cleanup does not mount its isolated helper"
+grep -F 'from=verify-helper' "$containerfile" >/dev/null ||
+  fail "runtime verification does not mount its isolated helper"
 runtime_stage=$(
   awk '
     /^FROM .* AS runtime$/ { in_runtime = 1 }
@@ -308,6 +328,14 @@ grep -F 'imagemagick6_identify=$(command -v identify-6)' "$containerfile" >/dev/
 grep -F 'rm -f "$GEM_HOME"/gems/rbpdf-font-*/lib/fonts/ttf2ufm/ttf2ufm' \
   "$containerfile" >/dev/null ||
   fail "non-musl rbpdf-font helper was not removed before dependency scanning"
+grep -F '> /tmp/runtime-elf-list' "$containerfile" >/dev/null ||
+  fail "scanelf output must be materialized before the stripping loop"
+grep -F 'done < /tmp/runtime-elf-list' "$containerfile" >/dev/null ||
+  fail "the stripping loop must consume successful scanelf output"
+grep -F '> /tmp/runtime-needed' "$containerfile" >/dev/null ||
+  fail "runtime dependency scanelf output must be materialized"
+grep -F "tr ',' '\\n' < /tmp/runtime-needed" "$containerfile" >/dev/null ||
+  fail "runtime dependency processing must consume successful scanelf output"
 grep -F '/run/redmine-tools/runtime-cleanup "$GEM_HOME" /usr/src/redmine /usr/local' \
   "$containerfile" >/dev/null ||
   fail "mounted runtime cleanup did not include the copied Ruby runtime"

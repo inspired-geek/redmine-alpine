@@ -56,6 +56,16 @@ fi
 SECRET_KEY_BASE=$secret_key_base
 export SECRET_KEY_BASE
 
+if is_default_puma_command "$@"; then
+  if ! bundle check; then
+    printf '%s\n' \
+      'ERROR: Bundler dependencies do not match the installed plugins.' \
+      'Add plugin dependencies to the repository plugins/ directory and rebuild' \
+      'the image with scripts/image-build.' >&2
+    exit 78
+  fi
+fi
+
 if is_default_puma_command "$@" && [ -z "${REDMINE_NO_DB_MIGRATE:-}" ]; then
   retries=${REDMINE_DB_MIGRATE_RETRIES:-30}
   delay=${REDMINE_DB_MIGRATE_DELAY:-2}

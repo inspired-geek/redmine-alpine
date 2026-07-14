@@ -2,10 +2,21 @@ ARG SOURCE_BASE
 ARG BUILDER_BASE
 ARG RUNTIME_BASE
 
-FROM ${SOURCE_BASE} AS helpers
+FROM ${SOURCE_BASE} AS apk-helper
 
-COPY scripts/apk-add scripts/gemfile-canonicalize \
-  scripts/runtime-cleanup scripts/runtime-verify /usr/local/bin/
+COPY scripts/apk-add /usr/local/bin/
+
+FROM ${SOURCE_BASE} AS gemfile-helper
+
+COPY scripts/gemfile-canonicalize /usr/local/bin/
+
+FROM ${SOURCE_BASE} AS cleanup-helper
+
+COPY scripts/runtime-cleanup /usr/local/bin/
+
+FROM ${SOURCE_BASE} AS verify-helper
+
+COPY scripts/runtime-verify /usr/local/bin/
 
 FROM ${SOURCE_BASE} AS source
 
@@ -17,7 +28,7 @@ ARG BUNDLER_VERSION
 ARG MARIADB_CONNECTOR_SOURCE_SHA256
 ARG MARIADB_CONNECTOR_SOURCE_URL
 
-RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+RUN --mount=type=bind,from=apk-helper,source=/usr/local/bin,target=/run/redmine-tools,ro \
   set -eux; \
   /run/redmine-tools/apk-add ca-certificates coreutils curl tar; \
   mkdir -p /opt/mariadb-connector-source /opt/redmine-source; \
@@ -99,9 +110,10 @@ ENV BUNDLE_SILENCE_ROOT_WARNING=1 \
 WORKDIR /usr/src/redmine
 
 COPY --from=source /opt/redmine-source/ /usr/src/redmine/
+COPY plugins/ /usr/src/redmine/plugins/
 COPY --from=source /opt/mariadb-connector-source/ /tmp/mariadb-connector-source/
 COPY --from=source /opt/bundler.gem /tmp/bundler.gem
-RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+RUN --mount=type=bind,from=apk-helper,source=/usr/local/bin,target=/run/redmine-tools,ro \
   set -eux; \
   /run/redmine-tools/apk-add $RUNTIME_PACKAGES; \
   /run/redmine-tools/apk-add --virtual .build-deps $BUILD_PACKAGES; \
@@ -168,14 +180,14 @@ RUN set -eux; \
     tmp/pdf \
     tmp/pids
 
-RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+RUN --mount=type=bind,from=gemfile-helper,source=/usr/local/bin,target=/run/redmine-tools,ro \
   set -eux; \
   /run/redmine-tools/gemfile-canonicalize Gemfile Gemfile.local; \
   bundle check
 
 COPY config/production.append.rb /tmp/redmine-alpine-production.rb
 
-RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+RUN --mount=type=bind,from=cleanup-helper,source=/usr/local/bin,target=/run/redmine-tools,ro \
   set -eux; \
   cat /tmp/redmine-alpine-production.rb >> config/environments/production.rb; \
   rm -f /tmp/redmine-alpine-production.rb; \
@@ -185,19 +197,22 @@ RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-too
     --nobanner \
     --format '%F' \
     --recursive /usr/local \
-    | while IFS= read -r target; do \
-        case $target in \
-          "$GEM_HOME"/*) continue ;; \
-        esac; \
-        strip --strip-unneeded "$target"; \
-      done; \
+    > /tmp/runtime-elf-list; \
+  while IFS= read -r target; do \
+    case $target in \
+      "$GEM_HOME"/*) continue ;; \
+    esac; \
+    strip --strip-unneeded "$target"; \
+  done < /tmp/runtime-elf-list; \
+  rm -f /tmp/runtime-elf-list; \
   rm -f "$GEM_HOME"/gems/rbpdf-font-*/lib/fonts/ttf2ufm/ttf2ufm; \
   scanelf \
     --needed \
     --nobanner \
     --format '%n#p' \
     --recursive /usr/local /opt/mariadb-connector-runtime \
-    | tr ',' '\n' \
+    > /tmp/runtime-needed; \
+  tr ',' '\n' < /tmp/runtime-needed \
     | sort -u \
     | awk \
       '$1 == "libc.so" { next } \
@@ -205,6 +220,7 @@ RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-too
        system("[ -e /opt/mariadb-connector-runtime/lib/mariadb/" $1 " ]") == 0 { next } \
        { print "so:" $1 }' \
     > /tmp/runtime-deps; \
+  rm -f /tmp/runtime-needed; \
   find /opt/mariadb-connector-runtime /usr/local /usr/src/redmine -exec \
     touch -h -d "@$SOURCE_DATE_EPOCH" {} +; \
   chmod -R go-w /usr/local /usr/src/redmine
@@ -242,7 +258,7 @@ ENV BUNDLE_APP_CONFIG=/usr/local/bundle \
 
 WORKDIR /usr/src/redmine
 
-RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+RUN --mount=type=bind,from=apk-helper,source=/usr/local/bin,target=/run/redmine-tools,ro \
   set -eux; \
   adduser -D -H -u 1001 -G root redmine; \
   mkdir -p "$HOME"; \
@@ -259,7 +275,7 @@ RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-too
 COPY --from=builder /tmp/runtime-deps /tmp/runtime-deps
 COPY --from=builder /opt/mariadb-connector-runtime/ /opt/mariadb-connector/
 
-RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+RUN --mount=type=bind,from=apk-helper,source=/usr/local/bin,target=/run/redmine-tools,ro \
   set -eux; \
   if [ -s /tmp/runtime-deps ]; then \
     /run/redmine-tools/apk-add --virtual .redmine-rundeps \
@@ -273,7 +289,8 @@ COPY config/database.yml config/secrets.yml config/puma.rb \
   /usr/src/redmine/config/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 
-RUN --mount=type=bind,from=helpers,source=/usr/local/bin,target=/run/redmine-tools,ro \
+RUN --mount=type=bind,from=apk-helper,source=/usr/local/bin/apk-add,target=/run/redmine-tools/apk-add,ro \
+  --mount=type=bind,from=verify-helper,source=/usr/local/bin/runtime-verify,target=/run/redmine-tools/runtime-verify,ro \
   set -eux; \
   chmod go-w /usr/local /usr/src/redmine; \
   chown -R 1001:0 \

@@ -123,7 +123,7 @@ printf '%s\n' \
 chmod +x "$fake_bin/strip"
 
 env HOME="$home" CARGO_HOME="$cargo" PATH="$fake_bin:$PATH" \
-  RUNTIME_CLEANUP_KEEP_PATHS="$gem/examples" \
+  RUNTIME_CLEANUP_KEEP_PATHS="$gem/examples/" \
   "$cleanup" "$bundle" "$app" "$runtime"
 
 for retained in \
@@ -181,8 +181,5 @@ set +e
 status=$?
 set -e
 [ "$status" -eq 64 ] || fail "unsafe bundle root was not rejected"
-
-grep -F '[ "$keep_parent" = / ]' "$cleanup" >/dev/null ||
-  fail "direct children of root are not normalized without a double slash"
 
 printf '%s\n' "runtime cleanup: PASS"

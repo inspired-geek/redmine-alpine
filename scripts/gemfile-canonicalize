@@ -41,18 +41,22 @@ begin
     result << index + 1 if match && names.include?(match[1])
   end
 
-  tokens = Ripper.lex(source)
+  # Ruby 2.4 returns three-element Ripper tokens, while newer Rubies append
+  # lexer state. Keep one representation so compatibility profiles exercise
+  # the same canonicalization path.
+  tokens = Ripper.lex(source).map { |token| token.first(3) }
   removed_lines = target_lines.each_with_object({}) do |start_line, result|
-    token_index = tokens.index do |position, event, token, _state|
+    token_index = tokens.index do |position, event, token|
       position[0] == start_line && event == :on_ident && token == "gem"
     end
     unless token_index
       raise GemfileCanonicalizeError,
             "cannot locate gem expression on line #{start_line}"
     end
-    terminator = tokens.drop(token_index).find do |_position, event, token, _state|
+    terminator = tokens.drop(token_index).find do |position, event, token|
       event == :on_nl || event == :on_semicolon ||
-        (event == :on_comment && token.end_with?("\n"))
+        (event == :on_comment && token.end_with?("\n") &&
+         Ripper.sexp(source_lines[(start_line - 1)...position[0]].join))
     end
     standalone_newline = terminator &&
       (terminator[1] == :on_nl ||

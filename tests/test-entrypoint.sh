@@ -65,6 +65,12 @@ increment() {
 }
 
 case "$*" in
+  "check")
+    if [ "${ENTRYPOINT_TEST_MODE:-success}" = missing-plugin-dependencies ]; then
+      printf '%s\n' 'The following gems are missing: colorize' >&2
+      exit 1
+    fi
+    ;;
   "exec rake db:migrate")
     attempt=$(increment core)
     case ${ENTRYPOINT_TEST_MODE:-success} in
@@ -109,6 +115,24 @@ status=$?
 set -e
 assert_status 64 "$status" "missing secret"
 assert_contains "$stderr" "SECRET_KEY_BASE or REDMINE_SECRET_KEY_BASE is required"
+
+rm -rf "$tmp/state"
+mkdir "$tmp/state"
+: >"$log"
+set +e
+env PATH="$tmp/bin:$PATH" ENTRYPOINT_TEST_LOG="$log" \
+  ENTRYPOINT_TEST_STATE="$tmp/state" \
+  SECRET_KEY_BASE=secret ENTRYPOINT_TEST_MODE=missing-plugin-dependencies \
+  "$entrypoint" bundle exec puma -C config/puma.rb \
+  >"$stdout" 2>"$stderr"
+status=$?
+set -e
+assert_status 78 "$status" "missing plugin dependencies"
+assert_count 1 "COMMAND=check"
+assert_count 0 "exec rake db:migrate"
+assert_count 0 "exec puma -C config/puma.rb"
+assert_contains "$stderr" "Add plugin dependencies to the repository plugins/ directory"
+assert_contains "$stderr" "scripts/image-build"
 
 : >"$log"
 env PATH="$tmp/bin:$PATH" ENTRYPOINT_TEST_LOG="$log" \

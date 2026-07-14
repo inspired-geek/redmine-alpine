@@ -158,7 +158,7 @@ actual=$(FAKE_PROBE_STATUS=absent run_publish \
   "$publisher" 5.1 \
   --index-archive "$tmp/index.oci.tar" \
   --image ghcr.io/inspired-geek/redmine-alpine)
-[ "$actual" = "image publish: PASS profile=5.1 digest=$expected_digest tags=5.1.13,5.1" ] ||
+[ "$actual" = "image publish: PASS profile=5.1 digest=$expected_digest published=5.1.13,5.1 verified=- preserved=-" ] ||
   fail "publish summary changed: $actual"
 
 [ "$(wc -l <"$tmp/probe.log" | tr -d ' ')" -eq 1 ] ||
@@ -194,10 +194,12 @@ authfile=$(sed -n '1s/.*--dest-authfile \([^ ]*\).*/\1/p' "$tmp/skopeo.log")
 
 : >"$tmp/probe.log"
 : >"$tmp/skopeo.log"
-FAKE_PROBE_STATUS=present run_publish \
+present_output=$(FAKE_PROBE_STATUS=present run_publish \
   "$publisher" 5.1 \
   --index-archive "$tmp/index.oci.tar" \
-  --image ghcr.io/inspired-geek/redmine-alpine >/dev/null
+  --image ghcr.io/inspired-geek/redmine-alpine)
+[ "$present_output" = "image publish: PASS profile=5.1 digest=$expected_digest published=5.1 verified=5.1.13 preserved=-" ] ||
+  fail "verified immutable summary changed: $present_output"
 [ "$(wc -l <"$tmp/skopeo.log" | tr -d ' ')" -eq 3 ] ||
   fail "existing immutable tag command count changed"
 sed -n '1p' "$tmp/skopeo.log" | grep -F 'skopeo inspect --raw' >/dev/null ||
@@ -220,6 +222,12 @@ grep -F \
   "image-publish: immutable tag preserved profile=5.1 tag=5.1.13 remote=" \
   "$tmp/mismatch.err" >/dev/null ||
   fail "immutable preservation diagnostic is missing"
+grep -F '::warning title=Immutable image tag preserved::profile=5.1 tag=5.1.13' \
+  "$tmp/mismatch.err" >/dev/null ||
+  fail "immutable divergence did not emit an Actions warning"
+expected_mismatch_summary="image publish: PASS profile=5.1 digest=$expected_digest published=5.1 verified=- preserved=5.1.13"
+[ "$(cat "$tmp/mismatch.out")" = "$expected_mismatch_summary" ] ||
+  fail "preserved immutable summary changed: $(cat "$tmp/mismatch.out")"
 [ "$(wc -l <"$tmp/skopeo.log" | tr -d ' ')" -eq 3 ] ||
   fail "moving tag was not published after preserving an immutable tag"
 if grep -F 'skopeo copy' "$tmp/skopeo.log" | grep -F ':5.1.13' >/dev/null; then

@@ -60,6 +60,35 @@ printf '%s\n' 'gem "puma", "8.0.2"' >"$comment_overrides"
 grep -Fx 'gem "rack", "~> 3.0"' "$comment_main" >/dev/null ||
   fail "declaration after a trailing comment was removed"
 
+multiline_main=$tmp/multiline.Gemfile
+multiline_overrides=$tmp/multiline.Gemfile.local
+printf '%s\n' \
+  'gem "sqlite3", # pinned native adapter' \
+  '  "~> 1.7"' \
+  'gem "rack", "~> 3.0"' >"$multiline_main"
+printf '%s\n' 'gem "sqlite3", "=2.9.4"' >"$multiline_overrides"
+"$helper" "$multiline_main" "$multiline_overrides"
+if grep -F '~> 1.7' "$multiline_main" >/dev/null; then
+  fail "continuation after an inline comment survived canonicalization"
+fi
+grep -Fx 'gem "rack", "~> 3.0"' "$multiline_main" >/dev/null ||
+  fail "declaration after a multiline override was removed"
+
+interleaved_main=$tmp/interleaved.Gemfile
+interleaved_overrides=$tmp/interleaved.Gemfile.local
+printf '%s\n' \
+  'gem "sqlite3",' \
+  '  # pinned native adapter' \
+  '  "~> 1.7"' \
+  'gem "rack", "~> 3.0"' >"$interleaved_main"
+printf '%s\n' 'gem "sqlite3", "=2.9.4"' >"$interleaved_overrides"
+"$helper" "$interleaved_main" "$interleaved_overrides"
+if grep -F '~> 1.7' "$interleaved_main" >/dev/null; then
+  fail "continuation after a whole-line comment survived canonicalization"
+fi
+grep -Fx 'gem "rack", "~> 3.0"' "$interleaved_main" >/dev/null ||
+  fail "declaration after an interleaved multiline override was removed"
+
 malformed_main=$tmp/malformed.Gemfile
 malformed_overrides=$tmp/malformed.Gemfile.local
 printf '%s\n' 'gem "rack", "~> 3.0"' >"$malformed_main"

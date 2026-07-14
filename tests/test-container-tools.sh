@@ -80,18 +80,20 @@ grep -F -- "$registry_tool" "$log" >/dev/null ||
   fail "explicit pinned tool image override was ignored"
 
 custom_catalog=$tmp/custom-images.json
+custom_tool=quay.io/podman/stable@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 ruby -rjson -e '
   value = JSON.parse(File.read(ARGV.fetch(0)))
-  value["tool_policy"]["toolchain"] = value.dig("tool_policy", "registry_tool")
+  value["tool_policy"]["toolchain"] = ARGV.fetch(2)
   File.write(ARGV.fetch(1), JSON.generate(value))
-' "$root/build/images.json" "$custom_catalog"
+' "$root/build/images.json" "$custom_catalog" "$custom_tool"
+custom_log=$tmp/custom-engine.log
 env PATH="$tmp/bin:$PATH" CONTAINER_TOOLS_ENGINE=fake-engine \
   CONTAINER_TOOLS_PLATFORM=linux/amd64 \
   CONTAINER_TOOLS_STORAGE=redmine-test-storage \
   CONTAINER_TOOLS_TEST_VOLUME="$tmp/volume" \
-  CONTAINER_TOOLS_TEST_LOG="$log" IMAGE_CATALOG="$custom_catalog" \
+  CONTAINER_TOOLS_TEST_LOG="$custom_log" IMAGE_CATALOG="$custom_catalog" \
   "$wrapper" true
-grep -F -- "$registry_tool" "$log" >/dev/null ||
+grep -F -- "$custom_tool" "$custom_log" >/dev/null ||
   fail "IMAGE_CATALOG toolchain override was ignored"
 
 normal_repo=$tmp/normal-repo

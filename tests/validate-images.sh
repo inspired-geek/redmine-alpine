@@ -185,7 +185,7 @@ assert_contains "$pipeline_workflow" 'matrix=$(scripts/image-catalog matrix)'
 assert_not_contains "$pipeline_workflow" 'value=$(scripts/image-catalog matrix)'
 assert_contains "$pipeline_workflow" 'rootfs.index.oci.tar'
 assert_contains "$pipeline_workflow" 'scripts/image-preflight'
-assert_contains "$pipeline_workflow" 'IMAGE_PREFLIGHT_DIRECT_PODMAN: 1'
+assert_not_contains "$pipeline_workflow" 'IMAGE_PREFLIGHT_DIRECT_PODMAN'
 
 assert_contains "$publish_workflow" 'branches: [master]'
 assert_not_contains "$publish_workflow" 'pull_request:'
@@ -305,10 +305,13 @@ for token in \
   'WEB_CONCURRENCY' \
   'REDMINE_NO_DB_MIGRATE' \
   'REDMINE_DB_MIGRATE_RETRIES' \
+  "repository's \`plugins/<name>/\` directory" \
+  'bundle check' \
   '/usr/src/redmine/sqlite'
 do
   assert_contains README.md "$token"
 done
+assert_not_contains README.md 'additionally persists `/usr/src/redmine/public/assets`'
 
 assert_contains docker-compose.yml 'ghcr.io/inspired-geek/redmine-alpine:7.0'
 assert_contains docker-compose.yml 'mariadb:11.8.8'

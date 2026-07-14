@@ -25,6 +25,8 @@ case $root in
 esac
 if [ "$root" != / ]; then
   root=${root%/}
+  [ -d "$root" ] || fail "RUNTIME_VERIFY_ROOT is missing: $root"
+  root=$(CDPATH= cd -- "$root" && pwd -P)
 fi
 
 root_path() {
@@ -38,6 +40,24 @@ root_path() {
 is_cleanup_exception() {
   candidate=$1
   for keep in ${RUNTIME_CLEANUP_KEEP_PATHS:-}; do
+    case $keep in
+      /*) ;;
+      *) fail "cleanup keep path must be absolute: $keep" ;;
+    esac
+    while [ "$keep" != / ] && [ "${keep%/}" != "$keep" ]; do
+      keep=${keep%/}
+    done
+    keep_name=${keep##*/}
+    keep_parent=${keep%/*}
+    [ -n "$keep_parent" ] || keep_parent=/
+    if [ -d "$keep_parent" ]; then
+      keep_parent=$(CDPATH= cd -- "$keep_parent" && pwd -P)
+      if [ "$keep_parent" = / ]; then
+        keep=/$keep_name
+      else
+        keep=$keep_parent/$keep_name
+      fi
+    fi
     case $candidate in
       "$keep"|"$keep"/*) return 0 ;;
     esac

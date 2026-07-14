@@ -53,6 +53,7 @@ assert_not_contains 'match.fetch(1)'
 assert_not_contains 'test -s public/plugin_assets/smoke_plugin/stylesheets/smoke.css'
 
 for fixture in \
+  tests/fixtures/smoke_plugin/Gemfile \
   tests/fixtures/smoke_plugin/init.rb \
   tests/fixtures/smoke_plugin/db/migrate/001_create_smoke_plugin_records.rb \
   tests/fixtures/smoke_plugin/assets/stylesheets/smoke.css \
@@ -60,6 +61,9 @@ for fixture in \
 do
   [ -f "$root/$fixture" ] || fail "missing $fixture"
 done
+
+grep -Fx 'gem "rake"' "$root/tests/fixtures/smoke_plugin/Gemfile" >/dev/null ||
+  fail "smoke plugin Gemfile does not exercise the runtime dependency check"
 
 ruby -c "$root/tests/fixtures/smoke_plugin/init.rb" >/dev/null
 grep -F 'view_layouts_base_html_head' \

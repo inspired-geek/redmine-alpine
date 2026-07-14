@@ -49,6 +49,11 @@ runtime_requires=$(
     ruby -rjson -e \
       'print JSON.parse(STDIN.read).dig("runtime_checks", "requires").join(" ")'
 )
+tool_policy=$("$root/scripts/image-catalog" tool-policy)
+toolchain=$(
+  printf '%s' "$tool_policy" |
+    ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("toolchain")'
+)
 
 archive_directory=$(CDPATH= cd -- "$(dirname "$index_archive")" && pwd -P)
 index_archive=$archive_directory/$(basename "$index_archive")
@@ -60,14 +65,11 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-if [ -n "${IMAGE_PREFLIGHT_PREPARE:-}" ]; then
-  "$IMAGE_PREFLIGHT_PREPARE" \
-    "$profile_id" "$index_archive" "$metrics" "$layout"
-else
-  ruby -rjson -rdigest -e '
+ruby -rjson -rdigest -e '
     indexer, profile_id, archive, metrics_path, layout = ARGV
     load indexer
     metrics = JSON.parse(File.read(metrics_path))
+    abort "unsupported image metrics schema" unless metrics.fetch("schema_version") == 1
     abort "metrics profile mismatch" unless metrics.fetch("profile") == profile_id
     measured = metrics.fetch("archives").fetch("index")
     abort "index archive size mismatch" unless measured.fetch("bytes") == File.size(archive)
@@ -109,14 +111,22 @@ else
       "#{JSON.pretty_generate(selected_index)}\n"
     )
   ' "$root/scripts/oci-index" "$profile_id" "$index_archive" "$metrics" "$layout"
-fi
 
+container_tools=${IMAGE_PREFLIGHT_CONTAINER_TOOLS:-$root/scripts/container-tools}
+[ -x "$container_tools" ] || {
+  printf 'ERROR: container-tools is not executable: %s\n' "$container_tools" >&2
+  exit 69
+}
 run_podman() {
-  if [ "${IMAGE_PREFLIGHT_DIRECT_PODMAN:-0}" = 1 ]; then
-    podman "$@"
-  else
-    "$root/scripts/container-tools" podman "$@"
-  fi
+  CONTAINER_TOOLS_IMAGE=$toolchain \
+    "$container_tools" sh -eu -c '
+      mkdir -p /etc/containers/storage.conf.d
+      printf "%s\n" \
+        "[storage.options.pull_options]" \
+        "enable_partial_images = \"true\"" \
+        > /etc/containers/storage.conf.d/partial-images.conf
+      exec podman "$@"
+    ' sh "$@"
 }
 
 image_id=$(run_podman pull --quiet "oci:$layout:zstd-preflight")

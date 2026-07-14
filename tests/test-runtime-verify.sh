@@ -40,6 +40,9 @@ mkdir -p \
   "$app/tmp/pids" \
   "$app/lib/redmine" \
   "$bin"
+fixture=$(CDPATH= cd -- "$fixture" && pwd -P)
+bundle=$fixture/usr/local/bundle
+app=$fixture/usr/src/redmine
 
 cat >"$app/lib/redmine/version.rb" <<'RUBY'
 module Redmine
@@ -206,6 +209,12 @@ set -e
 rm -f \
   "$bundle/gems/example-1.0/lib/allowed.o" \
   "$bundle/gems/second-1.0/lib/forbidden.o"
+
+kept_residue_dir=$bundle/gems/example-1.0/lib/kept-build-output
+mkdir -p "$kept_residue_dir"
+: >"$kept_residue_dir/native.o"
+RUNTIME_CLEANUP_KEEP_PATHS="$kept_residue_dir/" run_verify "$verify" contract
+rm -rf "$kept_residue_dir"
 
 mkdir -p "$fixture/usr/local/include"
 set +e

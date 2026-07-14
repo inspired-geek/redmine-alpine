@@ -161,17 +161,24 @@ assert(
   "MariaDB transaction isolation"
 )
 
-dangerous = 'part#{word\\path: "quoted"'
-database = render_yaml(
-  DATABASE_CONFIG,
-  "DB_ADAPTER" => "mysql2",
-  "DB_NAME" => dangerous,
-  "DB_HOST" => dangerous,
-  "DB_USER" => dangerous,
-  "DB_PASSWORD" => dangerous
-).fetch("production")
-%w[database host username password].each do |key|
-  assert(database.fetch(key) == dangerous, "YAML-safe #{key}")
+dangerous_values = [
+  'part#{word\\path: "quoted"',
+  "part\u007fword",
+  "part\u0085word",
+  "part\u009fword"
+].freeze
+dangerous_values.each do |dangerous|
+  database = render_yaml(
+    DATABASE_CONFIG,
+    "DB_ADAPTER" => "mysql2",
+    "DB_NAME" => dangerous,
+    "DB_HOST" => dangerous,
+    "DB_USER" => dangerous,
+    "DB_PASSWORD" => dangerous
+  ).fetch("production")
+  %w[database host username password].each do |key|
+    assert(database.fetch(key) == dangerous, "YAML-safe #{key}")
+  end
 end
 
 begin
@@ -199,6 +206,13 @@ secrets = render_yaml(SECRETS_CONFIG, "SECRET_KEY_BASE" => "preferred")
 assert(secrets.dig("production", "secret_key_base") == "preferred", "preferred secret")
 secrets = render_yaml(SECRETS_CONFIG, "REDMINE_SECRET_KEY_BASE" => "legacy")
 assert(secrets.dig("production", "secret_key_base") == "legacy", "legacy secret")
+dangerous_values.each do |dangerous|
+  secrets = render_yaml(SECRETS_CONFIG, "SECRET_KEY_BASE" => dangerous)
+  assert(
+    secrets.dig("production", "secret_key_base") == dangerous,
+    "YAML-safe secret"
+  )
+end
 
 begin
   render_yaml(SECRETS_CONFIG)
@@ -264,14 +278,23 @@ assert(ActiveRecord::Base.establishments == 1, "Puma reconnect after fork")
 
 production = production_config("RAILS_LOG_TO_STDOUT" => "")
 assert(production.logger.nil?, "empty RAILS_LOG_TO_STDOUT disables stdout logging")
-assert(!production.active_record.dump_schema_after_migration, "schema dump disabled")
-
-production = production_config(
-  "RAILS_LOG_TO_STDOUT" => "true",
-  "REDMINE_SECRET_KEY_BASE" => "legacy-exec-secret"
+assert(
+  production.active_record.dump_schema_after_migration == false,
+  "schema dump disabled"
 )
-assert(production.logger.is_a?(ActiveSupport::TaggedLogging), "stdout logging enabled")
-assert(ENV["SECRET_KEY_BASE"].nil?, "production config leaked SECRET_KEY_BASE")
+
+host_secret = ENV["SECRET_KEY_BASE"]
+ENV["SECRET_KEY_BASE"] = "host-secret"
+begin
+  production = production_config(
+    "RAILS_LOG_TO_STDOUT" => "true",
+    "REDMINE_SECRET_KEY_BASE" => "legacy-exec-secret"
+  )
+  assert(production.logger.is_a?(ActiveSupport::TaggedLogging), "stdout logging enabled")
+  assert(ENV["SECRET_KEY_BASE"] == "host-secret", "host secret was not restored")
+ensure
+  host_secret.nil? ? ENV.delete("SECRET_KEY_BASE") : ENV["SECRET_KEY_BASE"] = host_secret
+end
 
 with_environment("REDMINE_SECRET_KEY_BASE" => "legacy-exec-secret") do
   Rails.application = ProductionApplicationContract.new

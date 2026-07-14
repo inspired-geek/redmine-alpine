@@ -223,6 +223,9 @@ verify_existing_immutable_tag() {
   if [ "$actual_digest" != "$expected_digest" ]; then
     printf 'image-publish: immutable tag preserved profile=%s tag=%s remote=%s current=%s\n' \
       "$profile_id" "$tag" "$actual_digest" "$expected_digest" >&2
+    printf '::warning title=Immutable image tag preserved::profile=%s tag=%s remote=%s current=%s\n' \
+      "$profile_id" "$tag" "$actual_digest" "$expected_digest" >&2
+    return 1
   fi
 }
 
@@ -247,14 +250,19 @@ publish_tag() {
   verify_tag "$kind" "$tag"
 }
 
-published_tags=
 append_tag() {
-  if [ -z "$published_tags" ]; then
-    published_tags=$1
+  list=$1
+  tag=$2
+  if [ -z "$list" ]; then
+    printf '%s' "$tag"
   else
-    published_tags=$published_tags,$1
+    printf '%s,%s' "$list" "$tag"
   fi
 }
+
+published_tags=
+verified_tags=
+preserved_tags=
 
 for tag in $immutable_tags; do
   if status=$("$status_probe" "$image" "$tag"); then
@@ -266,21 +274,32 @@ for tag in $immutable_tags; do
     exit "$command_status"
   fi
   case $status in
-    present) verify_existing_immutable_tag "$tag" ;;
-    absent) publish_tag immutable "$tag" ;;
+    present)
+      if verify_existing_immutable_tag "$tag"; then
+        verified_tags=$(append_tag "$verified_tags" "$tag")
+      else
+        preserved_tags=$(append_tag "$preserved_tags" "$tag")
+      fi
+      ;;
+    absent)
+      publish_tag immutable "$tag"
+      published_tags=$(append_tag "$published_tags" "$tag")
+      ;;
     *)
       printf 'ERROR: profile=%s phase=immutable-probe tag=%s expected=present-or-absent actual=%s status=0\n' \
         "$profile_id" "$tag" "$status" >&2
       exit 1
       ;;
   esac
-  append_tag "$tag"
 done
 
 for tag in $moving_tags; do
   publish_tag moving "$tag"
-  append_tag "$tag"
+  published_tags=$(append_tag "$published_tags" "$tag")
 done
 
-printf 'image publish: PASS profile=%s digest=%s tags=%s\n' \
-  "$profile_id" "$expected_digest" "$published_tags"
+[ -n "$published_tags" ] || published_tags=-
+[ -n "$verified_tags" ] || verified_tags=-
+[ -n "$preserved_tags" ] || preserved_tags=-
+printf 'image publish: PASS profile=%s digest=%s published=%s verified=%s preserved=%s\n' \
+  "$profile_id" "$expected_digest" "$published_tags" "$verified_tags" "$preserved_tags"
