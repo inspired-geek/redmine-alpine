@@ -53,7 +53,7 @@ cat >"$tmp/bin/bundle" <<'SH'
 #!/bin/sh
 set -eu
 
-printf '%s\n' "$*" >>"$ENTRYPOINT_TEST_LOG"
+printf 'SCHEMA=%s COMMAND=%s\n' "${SCHEMA:-}" "$*" >>"$ENTRYPOINT_TEST_LOG"
 
 increment() {
   file=$ENTRYPOINT_TEST_STATE/$1
@@ -118,6 +118,7 @@ env PATH="$tmp/bin:$PATH" ENTRYPOINT_TEST_LOG="$log" \
 assert_contains "$log" "SECRET=legacy-secret"
 assert_count 1 "exec rake db:migrate"
 assert_count 1 "exec rake redmine:plugins:migrate"
+assert_count 2 "SCHEMA=/tmp/redmine-schema.rb COMMAND=exec rake"
 assert_count 1 "exec puma -C config/puma.rb"
 
 rm -rf "$tmp/state"

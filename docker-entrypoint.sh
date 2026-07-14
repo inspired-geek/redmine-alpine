@@ -79,8 +79,10 @@ if is_default_puma_command "$@" && [ -z "${REDMINE_NO_DB_MIGRATE:-}" ]; then
   while :; do
     printf 'Running Redmine database migrations (attempt %s/%s)...\n' \
       "$attempt" "$retries"
-    if run_child bundle exec rake db:migrate &&
-       run_child bundle exec rake redmine:plugins:migrate; then
+    if run_child env SCHEMA=/tmp/redmine-schema.rb \
+         bundle exec rake db:migrate &&
+       run_child env SCHEMA=/tmp/redmine-schema.rb \
+         bundle exec rake redmine:plugins:migrate; then
       printf '%s\n' 'Redmine database migrations completed.'
       break
     fi
