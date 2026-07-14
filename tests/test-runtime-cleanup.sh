@@ -24,6 +24,10 @@ other_series=9.9
 [ "$ruby_series" != "$other_series" ] || other_series=8.8
 multi_abi_gem=$bundle/gems/precompiled-1.0
 single_abi_gem=$bundle/gems/single-abi-1.0
+native_extension=$bundle/extensions/ruby/example/example.so
+native_gem=$gem/lib/example.so
+other_native=$gem/lib/other.so
+fake_bin=$tmp/bin
 
 mkdir -p \
   "$bundle/cache" \
@@ -40,6 +44,7 @@ mkdir -p \
   "$multi_abi_gem/lib/native/$ruby_series" \
   "$multi_abi_gem/lib/native/$other_series" \
   "$single_abi_gem/lib/native/$other_series" \
+  "$fake_bin" \
   "$app/test" \
   "$app/doc" \
   "$app/extra" \
@@ -56,6 +61,8 @@ for file in \
   "$bundle/doc/index.html" \
   "$bundle/build_info/example.info" \
   "$bundle/extensions/ruby/example/example.so" \
+  "$native_gem" \
+  "$other_native" \
   "$gem/lib/runtime.rb" \
   "$gem/ext/native.o" \
   "$gem/ports/native.a" \
@@ -80,7 +87,21 @@ do
   : >"$file"
 done
 
-env HOME="$home" CARGO_HOME="$cargo" \
+printf '%s' 'same-runtime:debug-info' >"$native_extension"
+printf '%s' 'same-runtime:debug-info' >"$native_gem"
+printf '%s' 'other-runtime:debug-info' >"$other_native"
+printf '%s\n' \
+  '#!/bin/sh' \
+  '[ "$1" = --strip-unneeded ] || exit 64' \
+  'shift' \
+  'for target do' \
+  '  sed "s/:debug-info$//" "$target" >"$target.stripped"' \
+  '  mv "$target.stripped" "$target"' \
+  'done' \
+  >"$fake_bin/strip"
+chmod +x "$fake_bin/strip"
+
+env HOME="$home" CARGO_HOME="$cargo" PATH="$fake_bin:$PATH" \
   RUNTIME_CLEANUP_KEEP_PATHS="$gem/examples" \
   "$cleanup" "$bundle" "$app"
 
@@ -95,6 +116,13 @@ for retained in \
 do
   [ -f "$retained" ] || fail "required path was removed: $retained"
 done
+
+[ "$(cat "$native_extension")" = same-runtime ] ||
+  fail "native extension was not stripped"
+[ "$native_extension" -ef "$native_gem" ] ||
+  fail "identical native extensions were not hardlinked"
+[ ! "$native_extension" -ef "$other_native" ] ||
+  fail "different native extensions were hardlinked"
 
 for removed in \
   "$bundle/cache" \

@@ -141,6 +141,31 @@ while IFS= read -r target; do
   remove_file "$target"
 done
 
+if command -v strip >/dev/null 2>&1; then
+  find "$bundle" -type f -name '*.so' -print |
+  while IFS= read -r target; do
+    is_protected "$target" || strip --strip-unneeded "$target"
+  done
+fi
+
+if [ -d "$bundle/extensions" ]; then
+  find "$bundle/extensions" -type f -name '*.so' -print |
+  while IFS= read -r extension; do
+    is_protected "$extension" && continue
+    find "$bundle/gems" -type f -name '*.so' -print |
+    while IFS= read -r candidate; do
+      is_protected "$candidate" && continue
+      [ ! "$extension" -ef "$candidate" ] || break
+      cmp -s "$extension" "$candidate" || continue
+      replacement=$extension.runtime-cleanup-link-$$
+      rm -f -- "$replacement"
+      ln "$candidate" "$replacement"
+      mv -f -- "$replacement" "$extension"
+      break
+    done
+  done
+fi
+
 for target in \
   "$app/test" \
   "$app/doc" \
