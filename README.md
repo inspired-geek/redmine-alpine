@@ -152,8 +152,9 @@ Multiple replicas still need deployment-level migration coordination.
 Plugin gems need the same compiler and development headers as Redmine itself.
 Put plugin source under the repository's `plugins/<name>/` directory before
 running `scripts/image-build`; every plugin `Gemfile` or `PluginGemfile` is then
-resolved and compiled in the common builder stage. The resulting application
-and gem tree remain root-owned and read-only in the runtime image.
+resolved and compiled in the common builder stage. Redmine core and the gem
+tree remain root-owned and read-only; `plugins/` keeps its documented writable
+UID 1001/group 0 data-path permissions for existing deployments.
 
 Runtime-mounted plugins remain compatible when all their dependencies are
 already present in the image. Before migrations, the entrypoint runs
