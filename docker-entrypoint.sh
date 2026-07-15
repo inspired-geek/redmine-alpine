@@ -57,9 +57,15 @@ SECRET_KEY_BASE=$secret_key_base
 export SECRET_KEY_BASE
 
 if is_default_puma_command "$@"; then
-  if ! bundle check; then
+  application_root=$(pwd -P)
+  REDMINE_APPLICATION_GEMFILE=$application_root/Gemfile
+  export REDMINE_APPLICATION_GEMFILE
+  if runtime_gemfile=$(plugin-bundle-prepare "$application_root"); then
+    BUNDLE_GEMFILE=$runtime_gemfile
+    export BUNDLE_GEMFILE
+  else
     printf '%s\n' \
-      'ERROR: Bundler dependencies do not match the installed plugins.' \
+      'ERROR: Plugin dependencies are not available in the runtime image.' \
       'Add plugin dependencies to the repository plugins/ directory and rebuild' \
       'the image with scripts/image-build.' >&2
     exit 78

@@ -53,7 +53,8 @@ cat >"$tmp/bin/bundle" <<'SH'
 #!/bin/sh
 set -eu
 
-printf 'SCHEMA=%s COMMAND=%s\n' "${SCHEMA:-}" "$*" >>"$ENTRYPOINT_TEST_LOG"
+printf 'SCHEMA=%s COMMAND=%s BUNDLE_GEMFILE=%s\n' \
+  "${SCHEMA:-}" "$*" "${BUNDLE_GEMFILE:-}" >>"$ENTRYPOINT_TEST_LOG"
 
 increment() {
   file=$ENTRYPOINT_TEST_STATE/$1
@@ -65,12 +66,6 @@ increment() {
 }
 
 case "$*" in
-  "check")
-    if [ "${ENTRYPOINT_TEST_MODE:-success}" = missing-plugin-dependencies ]; then
-      printf '%s\n' 'The following gems are missing: colorize' >&2
-      exit 1
-    fi
-    ;;
   "exec rake db:migrate")
     attempt=$(increment core)
     case ${ENTRYPOINT_TEST_MODE:-success} in
@@ -96,6 +91,17 @@ case "$*" in
 esac
 SH
 
+cat >"$tmp/bin/plugin-bundle-prepare" <<'SH'
+#!/bin/sh
+set -eu
+printf 'PLUGIN_PREPARE=%s\n' "$*" >>"$ENTRYPOINT_TEST_LOG"
+if [ "${ENTRYPOINT_TEST_MODE:-success}" = missing-plugin-dependencies ]; then
+  printf '%s\n' 'colorize (>= 0) required by plugins/example/Gemfile' >&2
+  exit 1
+fi
+printf '%s\n' '/tmp/redmine-runtime-bundle/Gemfile'
+SH
+
 cat >"$tmp/bin/capture" <<'SH'
 #!/bin/sh
 set -eu
@@ -104,7 +110,8 @@ for argument in "$@"; do
 done
 printf 'SECRET=%s\n' "$SECRET_KEY_BASE"
 SH
-chmod 0755 "$tmp/bin/bundle" "$tmp/bin/capture"
+chmod 0755 \
+  "$tmp/bin/bundle" "$tmp/bin/capture" "$tmp/bin/plugin-bundle-prepare"
 
 set +e
 env -u SECRET_KEY_BASE -u REDMINE_SECRET_KEY_BASE \
@@ -128,7 +135,7 @@ env PATH="$tmp/bin:$PATH" ENTRYPOINT_TEST_LOG="$log" \
 status=$?
 set -e
 assert_status 78 "$status" "missing plugin dependencies"
-assert_count 1 "COMMAND=check"
+assert_count 1 "PLUGIN_PREPARE="
 assert_count 0 "exec rake db:migrate"
 assert_count 0 "exec puma -C config/puma.rb"
 assert_contains "$stderr" "Add plugin dependencies to the repository plugins/ directory"
@@ -144,6 +151,7 @@ assert_count 1 "exec rake db:migrate"
 assert_count 1 "exec rake redmine:plugins:migrate"
 assert_count 2 "SCHEMA=/tmp/redmine-schema.rb COMMAND=exec rake"
 assert_count 1 "exec puma -C config/puma.rb"
+assert_count 3 "BUNDLE_GEMFILE=/tmp/redmine-runtime-bundle/Gemfile"
 
 rm -rf "$tmp/state"
 mkdir "$tmp/state"

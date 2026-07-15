@@ -1,0 +1,66 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  printf 'usage: %s APPLICATION_ROOT\n' "$0" >&2
+  exit 64
+}
+
+[ "$#" -eq 1 ] || usage
+application_root=$1
+[ -d "$application_root" ] || {
+  printf 'plugin-bundle-prepare: ERROR application root is missing: %s\n' \
+    "$application_root" >&2
+  exit 66
+}
+application_root=$(CDPATH= cd -- "$application_root" && pwd -P)
+application_gemfile=$application_root/Gemfile
+application_lockfile=$application_root/Gemfile.lock
+for required in "$application_gemfile" "$application_lockfile"; do
+  [ -f "$required" ] || {
+    printf 'plugin-bundle-prepare: ERROR required file is missing: %s\n' \
+      "$required" >&2
+    exit 66
+  }
+done
+
+temporary=$(mktemp -d "${TMPDIR:-/tmp}/redmine-runtime-bundle.XXXXXX")
+success=false
+cleanup() {
+  if [ "$success" != true ]; then
+    rm -rf "$temporary"
+  fi
+}
+trap cleanup EXIT HUP INT TERM
+
+runtime_gemfile=$temporary/Gemfile
+runtime_lockfile=$temporary/Gemfile.lock
+runtime_gem_home=$temporary/gems
+mkdir "$runtime_gem_home"
+printf '%s\n' \
+  'eval_gemfile ENV.fetch("REDMINE_APPLICATION_GEMFILE")' \
+  >"$runtime_gemfile"
+cp "$application_lockfile" "$runtime_lockfile"
+chmod u+w "$runtime_lockfile"
+
+original_gem_path=${GEM_PATH:-${GEM_HOME:-}}
+runtime_gem_path=$runtime_gem_home
+if [ -n "$original_gem_path" ]; then
+  runtime_gem_path=$runtime_gem_path:$original_gem_path
+fi
+if GEM_HOME=$runtime_gem_home \
+   GEM_PATH=$runtime_gem_path \
+   REDMINE_APPLICATION_GEMFILE=$application_gemfile \
+   BUNDLE_GEMFILE=$runtime_gemfile \
+   bundle install --local >&2
+then
+  :
+else
+  status=$?
+  printf '%s\n' \
+    'plugin-bundle-prepare: ERROR plugin dependencies are not installed.' >&2
+  exit "$status"
+fi
+
+success=true
+printf '%s\n' "$runtime_gemfile"

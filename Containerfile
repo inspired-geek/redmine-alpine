@@ -287,6 +287,7 @@ COPY --from=builder /usr/local/ /usr/local/
 COPY --from=builder /usr/src/redmine/ /usr/src/redmine/
 COPY config/database.yml config/secrets.yml config/puma.rb \
   /usr/src/redmine/config/
+COPY scripts/plugin-bundle-prepare /usr/local/bin/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 
 RUN --mount=type=bind,from=apk-helper,source=/usr/local/bin/apk-add,target=/run/redmine-tools/apk-add,ro \

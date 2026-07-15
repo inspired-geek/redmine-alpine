@@ -306,7 +306,9 @@ for token in \
   'REDMINE_NO_DB_MIGRATE' \
   'REDMINE_DB_MIGRATE_RETRIES' \
   "repository's \`plugins/<name>/\` directory" \
-  'bundle check' \
+  'bundle install --local' \
+  'temporary writable lockfile' \
+  'does not use the network' \
   '/usr/src/redmine/sqlite'
 do
   assert_contains README.md "$token"

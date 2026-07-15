@@ -232,6 +232,9 @@ bundle_install_line=$(grep -n 'bundle install --jobs' "$containerfile" | cut -d:
   fail "plugin Gemfiles must be present before bundle install"
 grep -F 'COPY --from=builder /usr/local/ /usr/local/' "$containerfile" >/dev/null ||
   fail "complete built Ruby runtime must be copied into the final image"
+grep -F 'COPY scripts/plugin-bundle-prepare /usr/local/bin/' \
+  "$containerfile" >/dev/null ||
+  fail "runtime plugin bundle preparer is not copied into the final image"
 grep -F -- '--recursive /usr/local /opt/mariadb-connector-runtime' \
   "$containerfile" >/dev/null ||
   fail "runtime dependency closure must include the copied Ruby runtime"
