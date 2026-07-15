@@ -1,0 +1,12 @@
+{
+  "description": "only trunk can use a git archive",
+  "operations": [
+    {"op": "replace", "path": "/profiles/0/source/kind", "value": "git_archive"},
+    {"op": "remove", "path": "/profiles/0/source/url"},
+    {"op": "remove", "path": "/profiles/0/source/sha256"},
+    {"op": "remove", "path": "/profiles/0/source/source_date_epoch"},
+    {"op": "add", "path": "/profiles/0/source/repository", "value": "https://github.com/redmine/redmine"},
+    {"op": "add", "path": "/profiles/0/source/ref", "value": "refs/heads/master"}
+  ],
+  "expected": "only trunk may use git_archive"
+}

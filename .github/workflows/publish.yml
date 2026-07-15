@@ -1,0 +1,117 @@
+---
+name: Build, publish, and verify images
+
+# yamllint disable-line rule:truthy
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+
+env:
+  IMAGE_REFERENCE: ghcr.io/${{ github.repository_owner }}/redmine-alpine
+
+jobs:
+  images:
+    name: Verified image matrix
+    uses: ./.github/workflows/image-pipeline.yml
+
+  publish:
+    name: Publish and verify Redmine ${{ matrix.profile }}
+    needs: [images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.images.outputs.matrix) }}
+    env:
+      PROFILE: ${{ matrix.profile }}
+      ARTIFACT_DIR: >-
+        artifacts/images/${{ matrix.profile }}/linux-amd64
+      GHCR_USER: ${{ github.actor }}
+      GHCR_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Download verified publication candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: redmine-${{ matrix.profile }}
+          path: ${{ env.ARTIFACT_DIR }}
+
+      - name: Publish immutable tag before moving alias
+        run: |
+          scripts/image-publish "$PROFILE" \
+            --index-archive "$ARTIFACT_DIR/rootfs.index.oci.tar" \
+            --metrics "$ARTIFACT_DIR/metrics.json" \
+            --image "$IMAGE_REFERENCE"
+
+      - name: Verify gzip and zstd:chunked registry pulls
+        shell: bash
+        run: |
+          set -euo pipefail
+          auth_dir="$ARTIFACT_DIR/registry-auth"
+          mkdir -p "$auth_dir"
+          chmod 0700 "$auth_dir"
+          cleanup() {
+            rm -rf "$auth_dir"
+          }
+          trap cleanup EXIT HUP INT TERM
+          export DOCKER_CONFIG=$auth_dir
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io \
+            --username "$GHCR_USER" --password-stdin
+
+          moving_tag=$(
+            scripts/image-catalog profile "$PROFILE" |
+              ruby -rjson -e \
+                'print JSON.parse(STDIN.read).dig("tags", "moving").fetch(0)'
+          )
+          expected_version=$(
+            scripts/image-catalog profile "$PROFILE" |
+              ruby -rjson -e \
+                'print JSON.parse(STDIN.read).dig("oci", "version")'
+          )
+          expected_puma=$(
+            scripts/image-catalog profile "$PROFILE" |
+              ruby -rjson -e \
+                'print JSON.parse(STDIN.read).fetch("puma_version")'
+          )
+          created=$(ruby -rjson -e \
+            'print JSON.parse(File.read(ARGV.fetch(0))).fetch("created")' \
+            "$ARTIFACT_DIR/build.json")
+
+          docker pull "$IMAGE_REFERENCE:$moving_tag"
+          CONTAINER_ENGINE=docker tests/verify-oci-labels.sh \
+            "$IMAGE_REFERENCE:$moving_tag" \
+            "$expected_version" "$GITHUB_SHA" "$created"
+          docker run --rm --entrypoint bundle "$IMAGE_REFERENCE:$moving_tag" \
+            exec puma --version | grep -F "$expected_puma"
+
+          zstd_digest=$(ruby -rjson -e '
+            value = JSON.parse(File.read(ARGV.fetch(0)))
+            print value.dig("content", "zstd_chunked_manifest_digest")
+          ' "$ARTIFACT_DIR/metrics.json")
+          authfile=$DOCKER_CONFIG/config.json
+          scripts/container-tools sh -eu -c '
+            mkdir -p /etc/containers/storage.conf.d
+            printf "%s\n" \
+              "[storage.options.pull_options]" \
+              "enable_partial_images = \"true\"" \
+              > /etc/containers/storage.conf.d/partial-images.conf
+            image_id=$(podman pull --quiet --authfile "$1" "$2@$3")
+            podman run --rm --entrypoint bundle "$image_id" exec puma --version
+          ' sh "$authfile" "$IMAGE_REFERENCE" "$zstd_digest" |
+            grep -F "$expected_puma"
+
+          docker logout ghcr.io

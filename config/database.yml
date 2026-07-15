@@ -1,7 +1,25 @@
+<% require "json" %>
+<% yaml_string = ->(value) { JSON.generate(value).gsub(/[\u007f-\u009f]/) { |character| "\\u%04X" % character.ord } } %>
+<% adapter = ENV.fetch("DB_ADAPTER", "sqlite3") %>
+<% unless %w[sqlite3 mysql2].include?(adapter) %>
+<%   raise ArgumentError, "Unsupported DB_ADAPTER: #{adapter}" %>
+<% end %>
+<% pool = Integer(ENV.fetch("RAILS_MAX_THREADS", "5"), 10) %>
+<% raise ArgumentError, "RAILS_MAX_THREADS must be positive" unless pool.positive? %>
 production:
-  adapter:  <%= ENV["DB_ADAPTER"] %>
-  database: <%= ENV["DB_NAME"] %>
-  host:     <%= ENV["DB_HOST"] %>
-  username: <%= ENV["DB_USER"] %>
-  password: <%= ENV["DB_PASSWORD"] %>
-  encoding: utf8
+  adapter: <%= yaml_string.call(adapter) %>
+  database: <%= yaml_string.call(ENV.fetch("DB_NAME", adapter == "sqlite3" ? "/usr/src/redmine/sqlite/redmine.db" : "redmine")) %>
+  pool: <%= pool %>
+<% if adapter == "mysql2" %>
+<% port = Integer(ENV.fetch("DB_PORT", "3306"), 10) %>
+<% raise ArgumentError, "DB_PORT must be positive" unless port.positive? %>
+  host: <%= yaml_string.call(ENV.fetch("DB_HOST", "db")) %>
+  port: <%= port %>
+  username: <%= yaml_string.call(ENV.fetch("DB_USER", "redmine")) %>
+  password: <%= yaml_string.call(ENV.fetch("DB_PASSWORD", "")) %>
+  encoding: utf8mb4
+  variables:
+    transaction_isolation: "READ-COMMITTED"
+<% else %>
+  timeout: 5000
+<% end %>

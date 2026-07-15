@@ -1,0 +1,148 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -eq 0 ]; then
+  printf 'usage: %s COMMAND [ARG...]\n' "$0" >&2
+  exit 64
+fi
+
+root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd -P)
+if [ -n "${CONTAINER_TOOLS_IMAGE:-}" ]; then
+  tool_image=$CONTAINER_TOOLS_IMAGE
+else
+  tool_policy=$("$root/scripts/image-catalog" tool-policy)
+  tool_image=$(
+    printf '%s' "$tool_policy" |
+      ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("toolchain")'
+  )
+fi
+
+if [ -n "${CONTAINER_TOOLS_ENGINE:-}" ]; then
+  engine=$CONTAINER_TOOLS_ENGINE
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  engine=docker
+elif command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+  engine=podman
+else
+  printf '%s\n' 'ERROR: neither a working Docker nor Podman engine was found.' >&2
+  exit 69
+fi
+
+case $engine in
+  *[!A-Za-z0-9_./-]*|'')
+    printf 'ERROR: unsafe container tools engine: %s\n' "$engine" >&2
+    exit 64
+    ;;
+esac
+
+storage=${CONTAINER_TOOLS_STORAGE:-redmine-alpine-container-tools}
+case $storage in
+  *[!A-Za-z0-9_.-]*|'')
+    printf 'ERROR: unsafe container tools storage name: %s\n' "$storage" >&2
+    exit 64
+    ;;
+esac
+
+if [ -n "${CONTAINER_TOOLS_PLATFORM:-}" ]; then
+  tool_platform=$CONTAINER_TOOLS_PLATFORM
+else
+  case $(uname -m) in
+    arm64|aarch64) tool_platform=linux/arm64 ;;
+    x86_64|amd64) tool_platform=linux/amd64 ;;
+    *)
+      printf 'ERROR: unsupported host architecture: %s\n' "$(uname -m)" >&2
+      exit 69
+      ;;
+  esac
+fi
+case $tool_platform in
+  linux/amd64|linux/arm64) ;;
+  *) printf 'ERROR: unsafe tool platform: %s\n' "$tool_platform" >&2; exit 64 ;;
+esac
+
+git_common_path=$(git -C "$root" rev-parse --git-common-dir)
+case $git_common_path in
+  /*) ;;
+  *) git_common_path=$root/$git_common_path ;;
+esac
+git_common=$(cd "$git_common_path" && pwd -P)
+worktree_root=$(git -C "$root" rev-parse --show-toplevel)
+worktree_root=$(cd "$worktree_root" && pwd -P)
+workdir=$(pwd -P)
+
+if ! "$engine" volume inspect "$storage" >/dev/null 2>&1; then
+  "$engine" volume create "$storage" >/dev/null
+fi
+
+container_id=
+log_pid=
+cleanup() {
+  set +e
+  if [ -n "$log_pid" ]; then
+    kill "$log_pid" >/dev/null 2>&1
+    wait "$log_pid" >/dev/null 2>&1
+    log_pid=
+  fi
+  if [ -n "$container_id" ]; then
+    "$engine" rm -f "$container_id" >/dev/null 2>&1
+    container_id=
+  fi
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+container_id=$("$engine" run \
+  --detach \
+  --privileged \
+  --platform "$tool_platform" \
+  --entrypoint /usr/bin/env \
+  --security-opt label=disable \
+  --add-host host.containers.internal:host-gateway \
+  --env STORAGE_DRIVER=vfs \
+  --tmpfs /home/podman/.local/share/containers:rw \
+  --volume "$storage:/var/lib/containers" \
+  --volume "$worktree_root:$worktree_root" \
+  --volume "$git_common:$git_common" \
+  --workdir "$workdir" \
+  "$tool_image" \
+  "$@")
+
+"$engine" logs --follow "$container_id" &
+log_pid=$!
+
+set +e
+container_status=$("$engine" wait "$container_id")
+wait_status=$?
+set -e
+
+set +e
+wait "$log_pid"
+logs_status=$?
+set -e
+log_pid=
+
+if [ "$wait_status" -ne 0 ]; then
+  printf 'ERROR: failed to wait for tool container %s\n' "$container_id" >&2
+  exit "$wait_status"
+fi
+case $container_status in
+  ''|*[!0-9]*)
+    printf 'ERROR: invalid tool container exit status: %s\n' "$container_status" >&2
+    exit 70
+    ;;
+esac
+if [ "$container_status" -gt 255 ]; then
+  printf 'ERROR: invalid tool container exit status: %s\n' "$container_status" >&2
+  exit 70
+fi
+
+"$engine" rm -f "$container_id" >/dev/null
+container_id=
+
+if [ "$logs_status" -ne 0 ] && [ "$container_status" -eq 0 ]; then
+  printf '%s\n' 'ERROR: failed to stream tool container logs.' >&2
+  exit "$logs_status"
+fi
+exit "$container_status"

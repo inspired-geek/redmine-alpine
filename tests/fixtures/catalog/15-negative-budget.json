@@ -1,0 +1,17 @@
+{
+  "description": "negative present budgets are rejected",
+  "operations": [
+    {
+      "op": "add",
+      "path": "/profiles/0/size_budgets",
+      "value": {
+        "linux/amd64": {
+          "rootfs_bytes": 1,
+          "gzip_bytes": -1,
+          "zstd_chunked_bytes": 1
+        }
+      }
+    }
+  ],
+  "expected": "must be >= 1"
+}

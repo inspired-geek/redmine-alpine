@@ -1,0 +1,7 @@
+{
+  "description": "release sources require HTTPS",
+  "operations": [
+    {"op": "replace", "path": "/profiles/0/source/url", "value": "http://www.redmine.org/releases/redmine-3.4.13.tar.gz"}
+  ],
+  "expected": "release source URL must be HTTPS"
+}

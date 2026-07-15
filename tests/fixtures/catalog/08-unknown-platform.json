@@ -1,0 +1,7 @@
+{
+  "description": "platforms are enumerated",
+  "operations": [
+    {"op": "replace", "path": "/profiles/0/platforms/0", "value": "linux/s390x"}
+  ],
+  "expected": "is not in enum"
+}

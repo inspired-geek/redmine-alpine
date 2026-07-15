@@ -1,0 +1,219 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  printf 'usage: %s BUNDLE_ROOT APP_ROOT [RUNTIME_ROOT]\n' "$0" >&2
+  exit 64
+}
+
+[ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
+bundle_input=$1
+app_input=$2
+runtime_input=${3:-}
+
+case $bundle_input in
+  ''|/) usage ;;
+esac
+case $app_input in
+  ''|/) usage ;;
+esac
+case $runtime_input in
+  /) usage ;;
+esac
+[ -d "$bundle_input/gems" ] || {
+  printf 'ERROR: bundle gems directory is missing: %s\n' "$bundle_input/gems" >&2
+  exit 66
+}
+[ -d "$app_input" ] || {
+  printf 'ERROR: application directory is missing: %s\n' "$app_input" >&2
+  exit 66
+}
+[ -z "$runtime_input" ] || [ -d "$runtime_input" ] || {
+  printf 'ERROR: runtime root is missing: %s\n' "$runtime_input" >&2
+  exit 66
+}
+
+bundle=$(CDPATH= cd -- "$bundle_input" && pwd -P)
+app=$(CDPATH= cd -- "$app_input" && pwd -P)
+runtime=
+if [ -n "$runtime_input" ]; then
+  runtime=$(CDPATH= cd -- "$runtime_input" && pwd -P)
+fi
+
+is_protected() {
+  candidate=$1
+  for keep in ${RUNTIME_CLEANUP_KEEP_PATHS:-}; do
+    case $keep in
+      /*) ;;
+      *)
+        printf 'ERROR: cleanup keep path must be absolute: %s\n' "$keep" >&2
+        exit 64
+        ;;
+    esac
+    while [ "$keep" != / ] && [ "${keep%/}" != "$keep" ]; do
+      keep=${keep%/}
+    done
+    keep_name=${keep##*/}
+    keep_parent=${keep%/*}
+    [ -n "$keep_parent" ] || keep_parent=/
+    if [ -d "$keep_parent" ]; then
+      keep_parent=$(CDPATH= cd -- "$keep_parent" && pwd -P)
+      if [ "$keep_parent" = / ]; then
+        keep=/$keep_name
+      else
+        keep=$keep_parent/$keep_name
+      fi
+    fi
+    case $candidate in
+      "$keep"|"$keep"/*) return 0 ;;
+    esac
+    case $keep in
+      "$candidate"/*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+remove_tree() {
+  target=$1
+  [ ! -e "$target" ] || is_protected "$target" || rm -rf -- "$target"
+}
+
+remove_file() {
+  target=$1
+  [ ! -e "$target" ] || is_protected "$target" || rm -f -- "$target"
+}
+
+remove_gem_residue() {
+  gem_root=$1
+  for target in \
+    "$gem_root/cache" \
+    "$gem_root/doc" \
+    "$gem_root/build_info"
+  do
+    remove_tree "$target"
+  done
+
+  for gem in "$gem_root"/gems/*; do
+    [ -d "$gem" ] || continue
+    for name in \
+      .bundle \
+      .github \
+      benchmark \
+      benchmarks \
+      coverage \
+      doc \
+      docs \
+      example \
+      examples \
+      ext \
+      features \
+      pkg \
+      ports \
+      spec \
+      test \
+      tests
+    do
+      remove_tree "$gem/$name"
+    done
+  done
+
+  find "$gem_root" -type f \
+    \( -name '*.a' -o -name '*.la' -o -name '*.lo' -o -name '*.o' \
+       -o -name Makefile -o -name gem_make.out -o -name mkmf.log \) \
+    -print |
+  while IFS= read -r target; do
+    remove_file "$target"
+  done
+}
+
+remove_gem_residue "$bundle"
+
+ruby_series=$(ruby -rrbconfig -e '
+  print RbConfig::CONFIG.fetch("ruby_version").split(".").first(2).join(".")
+')
+case $ruby_series in
+  [0-9].[0-9]) ;;
+  *)
+    printf 'ERROR: unsupported Ruby ABI series: %s\n' "$ruby_series" >&2
+    exit 64
+    ;;
+esac
+
+contains_shared_object() {
+  find "$1" -type f -name '*.so' -print | grep -q .
+}
+
+for gem in "$bundle"/gems/*; do
+  [ -d "$gem" ] || continue
+  for abi_dir in "$gem"/lib/*/[0-9].[0-9]; do
+    [ -d "$abi_dir" ] || continue
+    parent=${abi_dir%/*}
+    active_abi_dir=$parent/$ruby_series
+    [ "$abi_dir" != "$active_abi_dir" ] || continue
+    [ -d "$active_abi_dir" ] || continue
+    contains_shared_object "$active_abi_dir" || continue
+    contains_shared_object "$abi_dir" || continue
+    remove_tree "$abi_dir"
+  done
+done
+
+if command -v strip >/dev/null 2>&1; then
+  find "$bundle" -type f -name '*.so' -print |
+  while IFS= read -r target; do
+    is_protected "$target" || strip --strip-unneeded "$target"
+  done
+fi
+
+if [ -n "$runtime" ]; then
+  for default_gems in "$runtime"/lib/ruby/gems/*; do
+    [ -d "$default_gems/gems" ] || continue
+    [ "$default_gems" != "$bundle" ] || continue
+    remove_gem_residue "$default_gems"
+  done
+  remove_tree "$runtime/include"
+  remove_tree "$runtime/lib/pkgconfig"
+  remove_tree "$runtime/share/man"
+  for target in "$runtime"/lib/*.a "$runtime"/lib/*.la; do
+    [ -e "$target" ] || continue
+    remove_file "$target"
+  done
+fi
+
+if [ -d "$bundle/extensions" ]; then
+  find "$bundle/extensions" -type f -name '*.so' -print |
+  while IFS= read -r extension; do
+    is_protected "$extension" && continue
+    find "$bundle/gems" -type f -name '*.so' -print |
+    while IFS= read -r candidate; do
+      is_protected "$candidate" && continue
+      [ ! "$extension" -ef "$candidate" ] || break
+      cmp -s "$extension" "$candidate" || continue
+      replacement=$extension.runtime-cleanup-link-$$
+      rm -f -- "$replacement"
+      ln "$candidate" "$replacement"
+      mv -f -- "$replacement" "$extension"
+      break
+    done
+  done
+fi
+
+for target in \
+  "$app/test" \
+  "$app/doc" \
+  "$app/.bundle/cache" \
+  "$app/tmp/cache" \
+  "$app/files/delete.me" \
+  "$app/log/delete.me"
+do
+  remove_tree "$target"
+done
+
+home=${HOME:-/root}
+cargo=${CARGO_HOME:-$home/.cargo}
+remove_tree "$home/.bundle/cache"
+remove_tree "$cargo/registry"
+remove_tree "$cargo/git"
+remove_tree "$cargo/target"
+
+printf 'runtime cleanup: PASS bundle=%s app=%s\n' "$bundle" "$app"

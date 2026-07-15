@@ -1,0 +1,7 @@
+{
+  "description": "the required profile set is complete",
+  "operations": [
+    {"op": "remove", "path": "/profiles/9"}
+  ],
+  "expected": "profile ids must be exactly"
+}

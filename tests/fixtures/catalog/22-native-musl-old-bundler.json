@@ -1,0 +1,11 @@
+{
+  "description": "native musl platform variants require a Bundler that distinguishes musl from GNU",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/profiles/6/force_ruby_platform",
+      "value": false
+    }
+  ],
+  "expected": "5.1: native musl gems require Bundler >= 2.5.6"
+}

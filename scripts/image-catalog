@@ -1,0 +1,71 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require_relative "lib/image_catalog"
+
+repository_root = File.expand_path("..", __dir__)
+catalog_path = ENV.fetch("IMAGE_CATALOG", File.join(repository_root, "build/images.json"))
+schema_path = File.join(repository_root, "build/images.schema.json")
+
+def require_arity!(arguments, count, usage)
+  return if arguments.length == count
+
+  raise ImageCatalog::UsageError, usage
+end
+
+def profile_arguments!(arguments)
+  unless [1, 3].include?(arguments.length)
+    raise ImageCatalog::UsageError,
+          "usage: image-catalog {profile|build-args} PROFILE [--resolution FILE]"
+  end
+  id = arguments.shift
+  return [id, nil] if arguments.empty?
+
+  flag = arguments.shift
+  path = arguments.shift
+  unless flag == "--resolution" && path && !path.empty?
+    raise ImageCatalog::UsageError,
+          "usage: image-catalog {profile|build-args} PROFILE [--resolution FILE]"
+  end
+  [id, ImageCatalog::Catalog.load_resolution(path)]
+end
+
+begin
+  command = ARGV.shift
+  raise ImageCatalog::UsageError, "missing command" unless command
+
+  catalog = ImageCatalog::Catalog.load(catalog_path: catalog_path, schema_path: schema_path)
+
+  case command
+  when "validate"
+    require_arity!(ARGV, 0, "validate takes no arguments")
+    puts "catalog: PASS profiles=#{catalog.profiles.length} managed_tags=#{catalog.managed_tags.length}"
+  when "matrix"
+    require_arity!(ARGV, 0, "matrix takes no arguments")
+    puts JSON.generate(catalog.matrix)
+  when "profile"
+    id, resolution = profile_arguments!(ARGV)
+    puts JSON.generate(catalog.profile(id, resolution: resolution))
+  when "tags"
+    require_arity!(ARGV, 0, "tags takes no arguments")
+    puts catalog.managed_tags.join(" ")
+  when "compression"
+    require_arity!(ARGV, 0, "compression takes no arguments")
+    puts JSON.generate(catalog.compression)
+  when "tool-policy"
+    require_arity!(ARGV, 0, "tool-policy takes no arguments")
+    puts JSON.generate(catalog.tool_policy)
+  when "build-args"
+    id, resolution = profile_arguments!(ARGV)
+    puts JSON.generate(catalog.build_args(id, resolution: resolution))
+  else
+    raise ImageCatalog::UsageError, "unknown command #{command.inspect}"
+  end
+rescue ImageCatalog::UsageError => error
+  warn "image-catalog: #{error.message}"
+  exit 64
+rescue ImageCatalog::Error => error
+  warn "catalog: ERROR #{error.message}"
+  exit 1
+end

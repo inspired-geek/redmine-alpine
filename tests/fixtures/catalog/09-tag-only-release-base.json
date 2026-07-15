@@ -1,0 +1,7 @@
+{
+  "description": "release bases are digest pinned",
+  "operations": [
+    {"op": "replace", "path": "/profiles/0/base/reference", "value": "alpine:3.7"}
+  ],
+  "expected": "release base must use a full lowercase sha256 digest"
+}

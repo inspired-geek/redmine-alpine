@@ -1,0 +1,294 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "tmpdir"
+require "zlib"
+load File.expand_path("oci-index", __dir__)
+
+module ImageMetrics
+  class Error < StandardError; end
+  class UsageError < Error; end
+
+  module_function
+
+  def usage!
+    raise UsageError,
+          "usage: image-metrics PROFILE --gzip-archive FILE " \
+          "--zstd-chunked-archive FILE --index-archive FILE --output FILE " \
+          "[--baseline FILE] [--resolution FILE]"
+  end
+
+  def parse_arguments(arguments)
+    usage! if arguments.empty?
+    profile_id = arguments.shift
+    options = {}
+    until arguments.empty?
+      option = arguments.shift
+      case option
+      when "--gzip-archive"
+        options[:gzip_archive] = arguments.shift || usage!
+      when "--zstd-chunked-archive"
+        options[:zstd_archive] = arguments.shift || usage!
+      when "--index-archive"
+        options[:index_archive] = arguments.shift || usage!
+      when "--output"
+        options[:output] = arguments.shift || usage!
+      when "--baseline"
+        options[:baseline] = arguments.shift || usage!
+      when "--resolution"
+        options[:resolution] = arguments.shift || usage!
+      else
+        usage!
+      end
+    end
+    %i[gzip_archive zstd_archive index_archive output].each do |key|
+      usage! unless options.key?(key) && !options.fetch(key).empty?
+    end
+    [profile_id, options]
+  end
+
+  def digest_value(descriptor)
+    value = descriptor.fetch("digest")
+    raise Error, "invalid descriptor digest #{value.inspect}" unless OCIIndex::SHA256.match?(value)
+    value
+  end
+
+  def measure_rootfs(image)
+    layer_paths = image.blob_paths.drop(2)
+    diff_ids = image.config.dig("rootfs", "diff_ids")
+    unless diff_ids.is_a?(Array) && diff_ids.length == layer_paths.length
+      raise Error, "gzip rootfs diff_ids do not match layer count"
+    end
+
+    total = 0
+    layer_paths.each_with_index do |path, index|
+      digest = Digest::SHA256.new
+      begin
+        File.open(path, "rb") do |file|
+          gzip = Zlib::GzipReader.new(file)
+          begin
+            while (chunk = gzip.read(1024 * 1024))
+              total += chunk.bytesize
+              digest.update(chunk)
+            end
+          ensure
+            gzip.close
+          end
+        end
+      rescue Zlib::GzipFile::Error, Zlib::Error => error
+        raise Error, "invalid gzip layer #{index}: #{error.message}"
+      end
+      actual = "sha256:#{digest.hexdigest}"
+      unless actual == diff_ids.fetch(index)
+        raise Error, "gzip layer #{index} does not match config diff_id"
+      end
+    end
+    total
+  end
+
+  def layer_bytes(image)
+    image.manifest.fetch("layers").sum { |layer| layer.fetch("size") }
+  end
+
+  def load_combined_index(root, gzip, zstd, platform)
+    OCIIndex.validate_layout!(root)
+    layout_index = OCIIndex.parse_json_file(
+      File.join(root, "index.json"),
+      "combined OCI layout index"
+    )
+    OCIIndex.validate_schema!(
+      layout_index,
+      OCIIndex::IMAGE_INDEX,
+      "combined OCI layout index"
+    )
+    roots = layout_index.fetch("manifests")
+    unless roots.is_a?(Array) && roots.length == 1 &&
+           roots.first.fetch("mediaType") == OCIIndex::IMAGE_INDEX
+      raise Error, "combined OCI archive must contain exactly one image index"
+    end
+    root_descriptor = roots.first
+    _path, contents = OCIIndex.descriptor_blob(
+      root,
+      root_descriptor,
+      "combined image index"
+    )
+    index = OCIIndex.parse_json_blob(contents, "combined image index")
+    OCIIndex.validate_schema!(index, OCIIndex::IMAGE_INDEX, "combined image index")
+    descriptors = index.fetch("manifests")
+    unless descriptors.is_a?(Array) && descriptors.length == 2
+      raise Error, "combined image index must contain exactly two variants"
+    end
+    gzip_descriptor, zstd_descriptor = descriptors
+    unless digest_value(gzip_descriptor) == digest_value(gzip.descriptor) &&
+           gzip_descriptor.fetch("size") == gzip.descriptor.fetch("size")
+      raise Error, "combined image index does not reference the gzip manifest first"
+    end
+    unless digest_value(zstd_descriptor) == digest_value(zstd.descriptor) &&
+           zstd_descriptor.fetch("size") == zstd.descriptor.fetch("size")
+      raise Error, "combined image index does not reference the zstd:chunked manifest second"
+    end
+    if gzip_descriptor.dig("annotations", OCIIndex::ZSTD_MARKER)
+      raise Error, "gzip descriptor is incorrectly marked as zstd"
+    end
+    unless zstd_descriptor.dig("annotations", OCIIndex::ZSTD_MARKER) == "true"
+      raise Error, "zstd:chunked descriptor marker is missing"
+    end
+    unless descriptors.all? { |descriptor| descriptor.fetch("platform") == platform }
+      raise Error, "combined image index platform descriptors disagree"
+    end
+    digest_value(root_descriptor)
+  rescue KeyError => error
+    raise Error, "combined OCI image is missing #{error.key.inspect}"
+  end
+
+  def archive_description(path)
+    raise Error, "OCI archive not found: #{path}" unless File.file?(path)
+    {
+      "bytes" => File.size(path),
+      "sha256" => Digest::SHA256.file(path).hexdigest
+    }
+  end
+
+  def budgets_for(profile, platform, actual)
+    limits = profile.dig("size_budgets", platform)
+    return nil unless limits
+
+    %w[rootfs_bytes gzip_bytes zstd_chunked_bytes].each_with_object({}) do |key, result|
+      value = actual.fetch(key)
+      limit = limits.fetch(key)
+      if value > limit
+        raise Error, "#{key} exceeds budget: actual=#{value} limit=#{limit}"
+      end
+      result[key] = {
+        "actual" => value,
+        "limit" => limit,
+        "headroom" => limit - value
+      }
+    end
+  end
+
+  def parse_baseline(path)
+    JSON.parse(File.read(path))
+  rescue Errno::ENOENT
+    raise Error, "reproducibility baseline not found: #{path}"
+  rescue JSON::ParserError => error
+    raise Error, "invalid reproducibility baseline: #{error.message}"
+  end
+
+  def write_output(path, value)
+    destination = File.expand_path(path)
+    directory = File.dirname(destination)
+    FileUtils.mkdir_p(directory)
+    FileUtils.rm_f(destination)
+    temporary = File.join(directory, ".#{File.basename(destination)}.tmp-#{Process.pid}")
+    FileUtils.rm_f(temporary)
+    File.write(temporary, "#{JSON.pretty_generate(value)}\n")
+    File.rename(temporary, destination)
+    File.chmod(0o644, destination)
+  ensure
+    FileUtils.rm_f(temporary) if defined?(temporary) && temporary
+  end
+
+  def measure(profile, options)
+    output = File.expand_path(options.fetch(:output))
+    FileUtils.rm_f(output)
+    archives = {
+      "gzip" => options.fetch(:gzip_archive),
+      "zstd_chunked" => options.fetch(:zstd_archive),
+      "index" => options.fetch(:index_archive)
+    }
+
+    value = nil
+    Dir.mktmpdir("redmine-image-metrics-") do |temporary|
+      gzip_root = File.join(temporary, "gzip")
+      zstd_root = File.join(temporary, "zstd")
+      index_root = File.join(temporary, "index")
+      [gzip_root, zstd_root, index_root].each { |path| FileUtils.mkdir_p(path) }
+      OCIIndex.extract_archive(archives.fetch("gzip"), gzip_root)
+      OCIIndex.extract_archive(archives.fetch("zstd_chunked"), zstd_root)
+      OCIIndex.extract_archive(archives.fetch("index"), index_root)
+
+      gzip = OCIIndex.load_image(gzip_root, :gzip)
+      zstd = OCIIndex.load_image(zstd_root, :zstd_chunked)
+      unless gzip.config_descriptor == zstd.config_descriptor && gzip.config == zstd.config
+        raise Error, "gzip and zstd:chunked image configs differ"
+      end
+      platform_hash = OCIIndex.platform_for(profile, gzip.config)
+      OCIIndex.metadata_for(profile, gzip.config)
+      platform = profile.fetch("platforms").first
+      index_digest = load_combined_index(
+        index_root,
+        gzip,
+        zstd,
+        platform_hash
+      )
+      actual = {
+        "rootfs_bytes" => measure_rootfs(gzip),
+        "gzip_bytes" => layer_bytes(gzip),
+        "zstd_chunked_bytes" => layer_bytes(zstd)
+      }
+      content = {
+        "config_digest" => digest_value(gzip.config_descriptor),
+        "rootfs_bytes" => actual.fetch("rootfs_bytes"),
+        "gzip_bytes" => actual.fetch("gzip_bytes"),
+        "zstd_chunked_bytes" => actual.fetch("zstd_chunked_bytes"),
+        "gzip_manifest_digest" => digest_value(gzip.descriptor),
+        "zstd_chunked_manifest_digest" => digest_value(zstd.descriptor),
+        "index_digest" => index_digest
+      }
+      value = {
+        "schema_version" => 1,
+        "profile" => profile.fetch("id"),
+        "platform" => platform,
+        "content" => content,
+        "archives" => archives.transform_values { |path| archive_description(path) }
+      }
+      budgets = budgets_for(profile, platform, actual)
+      value["budgets"] = budgets if budgets
+    end
+
+    if options[:baseline]
+      baseline = parse_baseline(options.fetch(:baseline))
+      expected = baseline.values_at("profile", "platform", "content")
+      actual = value.values_at("profile", "platform", "content")
+      unless actual == expected
+        raise Error, "normalized OCI content differs from baseline"
+      end
+    end
+    write_output(output, value)
+    value
+  rescue OCIIndex::Error => error
+    FileUtils.rm_f(output) if defined?(output) && output
+    raise Error, error.message
+  rescue Error
+    FileUtils.rm_f(output) if defined?(output) && output
+    raise
+  end
+end
+
+begin
+  profile_id, options = ImageMetrics.parse_arguments(ARGV)
+  root = File.expand_path("..", __dir__)
+  catalog = ImageCatalog::Catalog.load(
+    catalog_path: ENV.fetch("IMAGE_CATALOG", File.join(root, "build", "images.json")),
+    schema_path: File.join(root, "build", "images.schema.json")
+  )
+  resolution = if options[:resolution]
+                 ImageCatalog::Catalog.load_resolution(options.fetch(:resolution))
+               end
+  profile = catalog.profile(profile_id, resolution: resolution)
+  value = ImageMetrics.measure(profile, options)
+  puts "image metrics: PASS profile=#{profile_id} " \
+       "rootfs=#{value.dig('content', 'rootfs_bytes')} " \
+       "gzip=#{value.dig('content', 'gzip_bytes')} " \
+       "zstd:chunked=#{value.dig('content', 'zstd_chunked_bytes')}"
+rescue ImageMetrics::UsageError, ImageCatalog::UsageError => error
+  warn "image-metrics: #{error.message}"
+  exit 64
+rescue ImageMetrics::Error, ImageCatalog::Error, SystemCallError => error
+  warn "image-metrics: ERROR #{error.message}"
+  exit 1
+end

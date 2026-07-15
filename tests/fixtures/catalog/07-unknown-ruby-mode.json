@@ -1,0 +1,7 @@
+{
+  "description": "Ruby installation modes are enumerated",
+  "operations": [
+    {"op": "replace", "path": "/profiles/0/ruby/install_mode", "value": "curl_pipe_shell"}
+  ],
+  "expected": "is not in enum"
+}

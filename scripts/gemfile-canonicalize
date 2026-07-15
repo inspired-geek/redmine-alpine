@@ -1,0 +1,92 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "ripper"
+
+class GemfileCanonicalizeError < StandardError; end
+
+unless ARGV.length == 2
+  warn "usage: #{File.basename($PROGRAM_NAME)} GEMFILE OVERRIDES"
+  exit 64
+end
+
+gemfile, overrides_file = ARGV
+temporary = "#{gemfile}.canonicalize-#{Process.pid}"
+
+begin
+  source = File.read(gemfile)
+  source_lines = source.lines
+  override_lines = File.readlines(overrides_file)
+  raise GemfileCanonicalizeError, "override file is empty" if override_lines.empty?
+  raise GemfileCanonicalizeError, "Gemfile is invalid Ruby" unless Ripper.sexp(source)
+
+  override_pattern = /\Agem "([a-z0-9][a-z0-9_-]*)"(?:, "(?:~>|=)?[0-9]+(?:\.[0-9]+)*")?(?:, force_ruby_platform: true)?\n?\z/
+  names = override_lines.map.with_index(1) do |line, line_number|
+    match = override_pattern.match(line)
+    unless match
+      raise GemfileCanonicalizeError,
+            "invalid override on line #{line_number}: #{line.chomp.inspect}"
+    end
+    match[1]
+  end
+  duplicates = names.group_by { |name| name }.select { |_name, values| values.length > 1 }.keys
+  unless duplicates.empty?
+    raise GemfileCanonicalizeError,
+          "duplicate override names: #{duplicates.sort.join(', ')}"
+  end
+
+  declaration_pattern = /\A\s*gem\s+["']([a-z0-9][a-z0-9_-]*)["']/
+  target_lines = source_lines.each_with_index.each_with_object([]) do |(line, index), result|
+    match = declaration_pattern.match(line)
+    result << index + 1 if match && names.include?(match[1])
+  end
+
+  # Ruby 2.4 returns three-element Ripper tokens, while newer Rubies append
+  # lexer state. Keep one representation so compatibility profiles exercise
+  # the same canonicalization path.
+  tokens = Ripper.lex(source).map { |token| token.first(3) }
+  removed_lines = target_lines.each_with_object({}) do |start_line, result|
+    token_index = tokens.index do |position, event, token|
+      position[0] == start_line && event == :on_ident && token == "gem"
+    end
+    unless token_index
+      raise GemfileCanonicalizeError,
+            "cannot locate gem expression on line #{start_line}"
+    end
+    terminator = tokens.drop(token_index).find do |position, event, token|
+      event == :on_nl || event == :on_semicolon ||
+        (event == :on_comment && token.end_with?("\n") &&
+         Ripper.sexp(source_lines[(start_line - 1)...position[0]].join))
+    end
+    standalone_newline = terminator &&
+      (terminator[1] == :on_nl ||
+       (terminator[1] == :on_comment && terminator[2].end_with?("\n")))
+    unless standalone_newline
+      raise GemfileCanonicalizeError,
+            "gem expression on line #{start_line} has no standalone newline"
+    end
+    (start_line..terminator[0][0]).each { |line_number| result[line_number] = true }
+  end
+
+  canonical = source_lines.each_with_index.reject do |_line, index|
+    removed_lines[index + 1]
+  end.map(&:first).join
+  canonical = canonical.rstrip
+  canonical = "#{canonical}\n\n#{override_lines.join}"
+  unless Ripper.sexp(canonical)
+    raise GemfileCanonicalizeError, "canonical Gemfile is invalid Ruby"
+  end
+
+  mode = File.stat(gemfile).mode & 0o777
+  File.open(temporary, File::WRONLY | File::CREAT | File::TRUNC, mode) do |file|
+    file.write(canonical)
+  end
+  File.chmod(mode, temporary)
+  File.rename(temporary, gemfile)
+  File.delete(overrides_file)
+rescue GemfileCanonicalizeError, SystemCallError => error
+  warn "gemfile-canonicalize: ERROR #{error.message}"
+  exit 1
+ensure
+  File.delete(temporary) if File.exist?(temporary)
+end

@@ -1,0 +1,7 @@
+{
+  "description": "profile objects reject unknown compatibility flags",
+  "operations": [
+    {"op": "add", "path": "/profiles/0/modern", "value": false}
+  ],
+  "expected": "unknown key \"modern\""
+}

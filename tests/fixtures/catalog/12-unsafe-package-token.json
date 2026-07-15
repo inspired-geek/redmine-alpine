@@ -1,0 +1,7 @@
+{
+  "description": "package tokens cannot contain shell syntax",
+  "operations": [
+    {"op": "replace", "path": "/profiles/0/packages/build/0", "value": "build-base;touch /tmp/pwned"}
+  ],
+  "expected": "does not match pattern"
+}

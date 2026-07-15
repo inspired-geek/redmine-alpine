@@ -1,0 +1,7 @@
+{
+  "description": "tool policy is closed",
+  "operations": [
+    {"op": "add", "path": "/tool_policy/eval", "value": "echo unsafe"}
+  ],
+  "expected": "unknown key \"eval\""
+}

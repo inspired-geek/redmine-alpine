@@ -1,0 +1,284 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  printf '%s\n' \
+    "usage: $0 PROFILE --platform PLATFORM --tag IMAGE --output-dir DIR" \
+    '       [--resolution FILE] [--revision 40_HEX_SHA] [--no-cache]' >&2
+  exit 64
+}
+
+[ "$#" -gt 0 ] || usage
+profile_id=$1
+shift
+
+platform=
+tag=
+output_dir=
+resolution=
+revision=
+no_cache=false
+
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --platform)
+      [ "$#" -ge 2 ] || usage
+      platform=$2
+      shift 2
+      ;;
+    --tag)
+      [ "$#" -ge 2 ] || usage
+      tag=$2
+      shift 2
+      ;;
+    --output-dir)
+      [ "$#" -ge 2 ] || usage
+      output_dir=$2
+      shift 2
+      ;;
+    --resolution)
+      [ "$#" -ge 2 ] || usage
+      resolution=$2
+      shift 2
+      ;;
+    --revision)
+      [ "$#" -ge 2 ] || usage
+      revision=$2
+      shift 2
+      ;;
+    --no-cache)
+      no_cache=true
+      shift
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
+
+[ -n "$platform" ] && [ -n "$tag" ] && [ -n "$output_dir" ] || usage
+
+root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd -P)
+
+run_podman() {
+  if [ "${IMAGE_BUILD_DIRECT_PODMAN:-0}" = 1 ]; then
+    podman "$@"
+  else
+    "$root/scripts/container-tools" podman "$@"
+  fi
+}
+
+set -- "$root/scripts/image-catalog" profile "$profile_id"
+if [ -n "$resolution" ]; then
+  set -- "$@" --resolution "$resolution"
+fi
+profile=$("$@")
+compression=$("$root/scripts/image-catalog" compression)
+
+json_value() {
+  printf '%s' "$profile" |
+    ruby -rjson -e '
+      value = ARGV.fetch(0).split(".").reduce(JSON.parse(STDIN.read)) do |node, key|
+        node.fetch(key)
+      end
+      print value.is_a?(Array) ? value.join(" ") : value
+    ' "$1"
+}
+
+json_optional_value() {
+  printf '%s' "$profile" |
+    ruby -rjson -e '
+      node = JSON.parse(STDIN.read)
+      ARGV.fetch(0).split(".").each do |key|
+        exit 0 unless node.is_a?(Hash) && node.key?(key)
+        node = node.fetch(key)
+      end
+      print node.is_a?(Array) ? node.join(" ") : node
+    ' "$1"
+}
+
+qualify_image_reference() {
+  case $1 in
+    *[/]*) printf '%s' "$1" ;;
+    *) printf 'docker.io/library/%s' "$1" ;;
+  esac
+}
+
+tool_policy=$("$root/scripts/image-catalog" tool-policy)
+source_base=$(
+  printf '%s' "$tool_policy" |
+    ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("source_base")'
+)
+source_base=$(qualify_image_reference "$source_base")
+profile_base=$(qualify_image_reference "$(json_value base.reference)")
+runtime_base=$(json_optional_value base.runtime_reference)
+if [ -z "$runtime_base" ]; then
+  runtime_base=$profile_base
+else
+  runtime_base=$(qualify_image_reference "$runtime_base")
+fi
+source_url=$(json_value source.url)
+source_sha256=$(json_value source.sha256)
+source_date_epoch=$(json_value source.source_date_epoch)
+redmine_version=$(json_value redmine_version)
+ruby_version=$(json_value ruby.version)
+bundler_version=$(json_value bundler_version)
+bundler_gem_sha256=$(json_value bundler_gem_sha256)
+force_ruby_platform=$(json_value force_ruby_platform)
+puma_version=$(json_value puma_version)
+mariadb_connector_version=$(json_optional_value mariadb_connector.version)
+mariadb_connector_source_url=$(json_optional_value mariadb_connector.source_url)
+mariadb_connector_source_sha256=$(json_optional_value mariadb_connector.source_sha256)
+feature_packages=$(json_value packages.feature)
+runtime_packages=$(json_value packages.runtime)
+build_packages=$(json_value packages.build)
+runtime_commands=$(json_value runtime_checks.commands)
+runtime_requires=$(json_value runtime_checks.requires)
+runtime_paths=$(json_value runtime_checks.paths)
+runtime_cleanup_keep_paths=$(json_value runtime_checks.cleanup_keep_paths)
+gzip_level=$(
+  printf '%s' "$compression" |
+    ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("gzip_level")'
+)
+
+allowed_platforms=$(json_value platforms)
+[ "$platform" = "$allowed_platforms" ] ||
+  { printf 'ERROR: profile %s does not support %s\n' "$profile_id" "$platform" >&2; exit 64; }
+
+case $tag in
+  *[!A-Za-z0-9_./:@-]*|'')
+    printf 'ERROR: unsafe image tag: %s\n' "$tag" >&2
+    exit 64
+    ;;
+esac
+
+if [ -z "$revision" ]; then
+  revision=$(git -C "$root" rev-parse HEAD)
+fi
+case $revision in
+  *[!0-9a-f]*|'') printf 'ERROR: invalid revision\n' >&2; exit 64 ;;
+esac
+[ "${#revision}" -eq 40 ] ||
+  { printf 'ERROR: revision must contain 40 lowercase hex characters\n' >&2; exit 64; }
+
+created=$(ruby -rtime -e \
+  'print Time.at(Integer(ARGV.fetch(0), 10)).utc.iso8601' "$source_date_epoch")
+gemfile_local_base64=$(
+  printf '%s' "$profile" |
+    ruby -rjson -rbase64 -e '
+      profile = JSON.parse(STDIN.read)
+      lines = [%[gem "puma", "#{profile.fetch("puma_version")}"]]
+      profile.fetch("compatibility_gems").each do |gem|
+        requirement = gem.fetch("requirement")
+        line = %[gem "#{gem.fetch("name")}"]
+        line += %[, "#{requirement}"] if requirement
+        line += %[, force_ruby_platform: true] if gem.fetch("force_ruby_platform", false)
+        lines << line
+      end
+      print Base64.strict_encode64("#{lines.join("\n")}\n")
+    '
+)
+oci_authors=$(json_value oci.authors)
+oci_description=$(json_value oci.description)
+oci_documentation=$(json_value oci.documentation)
+oci_licenses=$(json_value oci.licenses)
+oci_source=$(json_value oci.source)
+oci_title=$(json_value oci.title)
+oci_url=$(json_value oci.url)
+oci_version=$(json_value oci.version)
+
+mkdir -p "$output_dir"
+archive=$output_dir/rootfs.oci.tar
+metadata=$output_dir/build.json
+digest_file=$output_dir/.rootfs.digest
+success=false
+cleanup() {
+  rm -f "$digest_file"
+  if [ "$success" != true ]; then
+    rm -f "$archive" "$metadata"
+  fi
+}
+trap cleanup EXIT HUP INT TERM
+rm -f "$archive" "$metadata" "$digest_file"
+
+set -- build \
+  --file "$root/Containerfile" \
+  --format oci \
+  --layers \
+  --platform "$platform" \
+  --source-date-epoch "$source_date_epoch" \
+  --rewrite-timestamp \
+  --tag "$tag"
+[ "$no_cache" != true ] || set -- "$@" --no-cache
+
+for argument in \
+  "SOURCE_BASE=$source_base" \
+  "BUILDER_BASE=$profile_base" \
+  "RUNTIME_BASE=$runtime_base" \
+  "SOURCE_URL=$source_url" \
+  "SOURCE_SHA256=$source_sha256" \
+  "EXPECTED_REDMINE_VERSION=$redmine_version" \
+  "EXPECTED_RUBY_VERSION=$ruby_version" \
+  "BUNDLER_VERSION=$bundler_version" \
+  "BUNDLER_GEM_SHA256=$bundler_gem_sha256" \
+  "FORCE_RUBY_PLATFORM=$force_ruby_platform" \
+  "PUMA_VERSION=$puma_version" \
+  "MARIADB_CONNECTOR_VERSION=$mariadb_connector_version" \
+  "MARIADB_CONNECTOR_SOURCE_URL=$mariadb_connector_source_url" \
+  "MARIADB_CONNECTOR_SOURCE_SHA256=$mariadb_connector_source_sha256" \
+  "FEATURE_PACKAGES=$feature_packages" \
+  "RUNTIME_PACKAGES=$runtime_packages" \
+  "BUILD_PACKAGES=$build_packages" \
+  "GEMFILE_LOCAL_BASE64=$gemfile_local_base64" \
+  "RUNTIME_COMMANDS=$runtime_commands" \
+  "RUNTIME_REQUIRES=$runtime_requires" \
+  "RUNTIME_PATHS=$runtime_paths" \
+  "RUNTIME_CLEANUP_KEEP_PATHS=$runtime_cleanup_keep_paths" \
+  "BUILD_DATE=$created" \
+  "VCS_REF=$revision" \
+  "OCI_AUTHORS=$oci_authors" \
+  "OCI_DESCRIPTION=$oci_description" \
+  "OCI_DOCUMENTATION=$oci_documentation" \
+  "OCI_LICENSES=$oci_licenses" \
+  "OCI_SOURCE=$oci_source" \
+  "OCI_TITLE=$oci_title" \
+  "OCI_URL=$oci_url" \
+  "OCI_VERSION=$oci_version"
+do
+  set -- "$@" --build-arg "$argument"
+done
+set -- "$@" "$root"
+run_podman "$@"
+
+run_podman push \
+  --format oci \
+  --compression-format gzip \
+  --compression-level "$gzip_level" \
+  --force-compression \
+  --digestfile "$digest_file" \
+  "$tag" \
+  "oci-archive:$archive:$profile_id"
+image_digest=$(cat "$digest_file")
+
+ruby -rjson -e '
+  output, profile, platform, tag, revision, created, digest, source, base,
+    gzip_level = ARGV
+  value = {
+    "profile" => profile,
+    "platform" => platform,
+    "tag" => tag,
+    "revision" => revision,
+    "created" => created,
+    "image_digest" => digest,
+    "source" => JSON.parse(source).fetch("source"),
+    "base" => base,
+    "compression" => {"format" => "gzip", "level" => Integer(gzip_level, 10)},
+    "archive" => "rootfs.oci.tar"
+  }
+  File.write(output, "#{JSON.pretty_generate(value)}\n")
+' "$metadata" "$profile_id" "$platform" "$tag" "$revision" "$created" \
+  "$image_digest" "$profile" "$profile_base" "$gzip_level"
+
+success=true
+printf 'image build: PASS profile=%s platform=%s digest=%s\n' \
+  "$profile_id" "$platform" "$image_digest"
