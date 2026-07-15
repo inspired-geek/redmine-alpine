@@ -58,11 +58,19 @@ export SECRET_KEY_BASE
 
 if is_default_puma_command "$@"; then
   application_root=$(pwd -P)
+  original_gem_path=${GEM_PATH:-${GEM_HOME:-}}
   REDMINE_APPLICATION_GEMFILE=$application_root/Gemfile
   export REDMINE_APPLICATION_GEMFILE
   if runtime_gemfile=$(plugin-bundle-prepare "$application_root"); then
+    runtime_bundle_root=${runtime_gemfile%/Gemfile}
+    BUNDLE_APP_CONFIG=$runtime_bundle_root/config
     BUNDLE_GEMFILE=$runtime_gemfile
-    export BUNDLE_GEMFILE
+    GEM_HOME=$runtime_bundle_root/gems
+    GEM_PATH=$GEM_HOME
+    if [ -n "$original_gem_path" ]; then
+      GEM_PATH=$GEM_PATH:$original_gem_path
+    fi
+    export BUNDLE_APP_CONFIG BUNDLE_GEMFILE GEM_HOME GEM_PATH
   else
     printf '%s\n' \
       'ERROR: Plugin dependencies are not available in the runtime image.' \

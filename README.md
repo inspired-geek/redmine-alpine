@@ -158,11 +158,12 @@ UID 1001/group 0 data-path permissions for existing deployments.
 
 Runtime-mounted plugins remain compatible when all their dependencies are
 already present in the image. Before migrations, the entrypoint resolves plugin
-Gemfiles with `bundle install --local` into a temporary writable lockfile; it
-does not use the network or modify the root-owned application lockfile. The
-same temporary bundle definition is used for migrations and Puma. A missing
-gem exits immediately with a build instruction instead of being retried as
-though the database were temporarily unavailable.
+Gemfiles with `bundle install --local` into a temporary writable lockfile and
+temporary Bundler config/gem home; it does not use the network or modify the
+root-owned application lockfile or installed bundle. The same temporary bundle
+definition is used for migrations and Puma. A missing gem exits immediately
+with a build instruction instead of being retried as though the database were
+temporarily unavailable.
 
 A volume mounted at `/usr/src/redmine/plugins` replaces the plugin directory
 from the image. Keep that volume synchronized with the plugin revisions used

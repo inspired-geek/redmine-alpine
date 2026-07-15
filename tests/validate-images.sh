@@ -308,6 +308,7 @@ for token in \
   "repository's \`plugins/<name>/\` directory" \
   'bundle install --local' \
   'temporary writable lockfile' \
+  'temporary Bundler config/gem home' \
   'does not use the network' \
   '/usr/src/redmine/sqlite'
 do

@@ -53,8 +53,10 @@ cat >"$tmp/bin/bundle" <<'SH'
 #!/bin/sh
 set -eu
 
-printf 'SCHEMA=%s COMMAND=%s BUNDLE_GEMFILE=%s\n' \
-  "${SCHEMA:-}" "$*" "${BUNDLE_GEMFILE:-}" >>"$ENTRYPOINT_TEST_LOG"
+printf 'SCHEMA=%s COMMAND=%s BUNDLE_GEMFILE=%s BUNDLE_APP_CONFIG=%s GEM_HOME=%s GEM_PATH=%s\n' \
+  "${SCHEMA:-}" "$*" "${BUNDLE_GEMFILE:-}" \
+  "${BUNDLE_APP_CONFIG:-}" "${GEM_HOME:-}" "${GEM_PATH:-}" \
+  >>"$ENTRYPOINT_TEST_LOG"
 
 increment() {
   file=$ENTRYPOINT_TEST_STATE/$1
@@ -144,6 +146,8 @@ assert_contains "$stderr" "scripts/image-build"
 : >"$log"
 env PATH="$tmp/bin:$PATH" ENTRYPOINT_TEST_LOG="$log" \
   ENTRYPOINT_TEST_STATE="$tmp/state" \
+  BUNDLE_APP_CONFIG=/read-only/bundle-config \
+  GEM_HOME=/read-only/gems GEM_PATH=/read-only/gems:/default/gems \
   REDMINE_SECRET_KEY_BASE=legacy-secret \
   "$entrypoint" bundle exec puma -C config/puma.rb >/dev/null
 assert_contains "$log" "SECRET=legacy-secret"
@@ -152,6 +156,9 @@ assert_count 1 "exec rake redmine:plugins:migrate"
 assert_count 2 "SCHEMA=/tmp/redmine-schema.rb COMMAND=exec rake"
 assert_count 1 "exec puma -C config/puma.rb"
 assert_count 3 "BUNDLE_GEMFILE=/tmp/redmine-runtime-bundle/Gemfile"
+assert_count 3 "BUNDLE_APP_CONFIG=/tmp/redmine-runtime-bundle/config"
+assert_count 3 "GEM_HOME=/tmp/redmine-runtime-bundle/gems"
+assert_count 3 "GEM_PATH=/tmp/redmine-runtime-bundle/gems:/read-only/gems:/default/gems"
 
 rm -rf "$tmp/state"
 mkdir "$tmp/state"
